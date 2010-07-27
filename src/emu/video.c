@@ -1285,6 +1285,8 @@ void video_frame_update(running_machine *machine, int debug)
 	assert(machine != NULL);
 	assert(machine->config != NULL);
 
+	CallRegisteredLuaFunctions(LUACALL_BEFOREEMULATION);
+
 	/* only render sound and video if we're in the running phase */
 	if (phase == MAME_PHASE_RUNNING && (!mame_is_paused(machine) || options_get_bool(mame_options(), OPTION_UPDATEINPAUSE)))
 	{
@@ -1344,6 +1346,7 @@ void video_frame_update(running_machine *machine, int debug)
 			profiler_mark_end();
 		}
 	}
+	CallRegisteredLuaFunctions(LUACALL_AFTEREMULATION);
 }
 
 
@@ -1383,6 +1386,7 @@ static int finish_screen_updates(running_machine *machine)
 
 					fixedvis.max_x++;
 					fixedvis.max_y++;
+					MAME_LuaGui(bitmap);
 					render_texture_set_bitmap(state->texture[state->curbitmap], bitmap, &fixedvis, state->texture_format, palette);
 					state->curtexture = state->curbitmap;
 					state->curbitmap = 1 - state->curbitmap;
@@ -1464,9 +1468,13 @@ const char *video_get_speed_text(running_machine *machine)
 	int paused = mame_is_paused(machine);
 	static char buffer[1024];
 	char *dest = buffer;
+	screen_state* state = get_safe_token(machine->primary_screen);
 
 	/* validate */
 	assert(machine != NULL);
+
+	/* show frame counter */
+	dest += sprintf(dest, "[%i] : ",(UINT32)state->frame_number);
 
 	/* if we're paused, just display Paused */
 	if (paused)

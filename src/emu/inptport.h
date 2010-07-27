@@ -1114,6 +1114,9 @@ int input_field_has_next_setting(const input_field_config *field);
 /* select the next item for a DIP switch or configuration field */
 void input_field_select_next_setting(const input_field_config *field);
 
+/* helper function to access INP file handles.  **shakes fist at MAMEdev** */
+mame_file* get_record_file(running_machine* machine);
+mame_file* get_playback_file(running_machine* machine);
 
 
 /* ----- port reading ----- */
@@ -1186,5 +1189,7 @@ int input_has_input_class(running_machine *machine, int inputclass);
 int input_player_number(const input_field_config *field);
 int input_count_players(running_machine *machine);
 int input_category_active(running_machine *machine, int category);
+
+void set_port_digital(const input_port_config *port, UINT32 new_digital);
 
 #endif	/* __INPTPORT_H__ */

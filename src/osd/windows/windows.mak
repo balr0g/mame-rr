@@ -229,7 +229,7 @@ endif
 LDFLAGS += -static-libgcc
 
 # add the windows libraries
-LIBS += -luser32 -lgdi32 -lddraw -ldsound -ldxguid -lwinmm -ladvapi32 -lcomctl32 -lshlwapi -ldinput8
+LIBS += -luser32 -lgdi32 -lddraw -ldsound -ldxguid -lwinmm -ladvapi32 -lcomctl32 -lshlwapi -ldinput8 -llua51
 
 ifeq ($(DIRECTINPUT),8)
 LIBS += -ldinput8
@@ -271,11 +271,12 @@ OSDOBJS = \
 	$(WINOBJ)/drawgdi.o \
 	$(WINOBJ)/drawnone.o \
 	$(WINOBJ)/input.o \
+	$(WINOBJ)/luaconsole.o \
 	$(WINOBJ)/output.o \
 	$(WINOBJ)/sound.o \
 	$(WINOBJ)/video.o \
 	$(WINOBJ)/window.o \
-	$(WINOBJ)/winmain.o
+	$(WINOBJ)/winmain.o 
 
 ifeq ($(DIRECT3D),9)
 CCOMFLAGS += -DDIRECT3D_VERSION=0x0900

@@ -1494,7 +1494,7 @@ static UINT32 handler_load_save(running_machine *machine, render_container *cont
 			popmessage("Load cancelled");
 
 		/* reset the state */
-		mame_pause(machine, FALSE);
+//		mame_pause(machine, FALSE);
 		return UI_HANDLER_CANCEL;
 	}
 
@@ -1527,7 +1527,7 @@ static UINT32 handler_load_save(running_machine *machine, render_container *cont
 	}
 
 	/* remove the pause and reset the state */
-	mame_pause(machine, FALSE);
+//	mame_pause(machine, FALSE);
 	return UI_HANDLER_CANCEL;
 }
 

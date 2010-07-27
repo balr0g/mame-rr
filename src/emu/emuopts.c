@@ -100,7 +100,7 @@ const options_entry mame_core_options[] =
 	{ "brightness(0.1-2.0)",         "1.0",       0,                 "default game screen brightness correction" },
 	{ "contrast(0.1-2.0)",           "1.0",       0,                 "default game screen contrast correction" },
 	{ "gamma(0.1-3.0)",              "1.0",       0,                 "default game screen gamma correction" },
-	{ "pause_brightness(0.0-1.0)",   "0.65",      0,                 "amount to scale the screen brightness when paused" },
+	{ "pause_brightness(0.0-1.0)",   "0.9",       0,                 "amount to scale the screen brightness when paused" },
 
 	/* vector options */
 	{ NULL,                          NULL,        OPTION_HEADER,     "CORE VECTOR OPTIONS" },
@@ -148,7 +148,7 @@ const options_entry mame_core_options[] =
 	{ NULL,                          NULL,        OPTION_HEADER,     "CORE DEBUGGING OPTIONS" },
 	{ "log",                         "0",         OPTION_BOOLEAN,    "generate an error.log file" },
 	{ "verbose;v",                   "0",         OPTION_BOOLEAN,    "display additional diagnostic information" },
-	{ "update_in_pause",             "0",         OPTION_BOOLEAN,    "keep calling video updates while in pause" },
+	{ "update_in_pause",             "1",         OPTION_BOOLEAN,    "keep calling video updates while in pause" },
 	{ "debug;d",                     "0",         OPTION_BOOLEAN,    "enable/disable debugger" },
 	{ "debugscript",                 NULL,        0,                 "script for debugger" },
 	{ "debug_internal;di",           "0",         OPTION_BOOLEAN,    "use the internal debugger for debugging" },
@@ -157,7 +157,8 @@ const options_entry mame_core_options[] =
 	{ NULL,                          NULL,        OPTION_HEADER,     "CORE MISC OPTIONS" },
 	{ "bios",                        NULL,        0,                 "select the system BIOS to use" },
 	{ "cheat;c",                     "0",         OPTION_BOOLEAN,    "enable cheat subsystem" },
-	{ "skip_gameinfo",               "0",         OPTION_BOOLEAN,    "skip displaying the information screen at startup" },
+	{ "skip_gameinfo",               "1",         OPTION_BOOLEAN,    "skip displaying the information screen at startup" },
+	{ "lua",                         NULL,        0,                 "run a lua script file" },
 
 	{ NULL }
 };

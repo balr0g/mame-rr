@@ -2527,6 +2527,7 @@ profiler_mark_start(PROFILER_INPUT);
 
 		/* handle playback/record */
 		playback_port(port);
+		MAME_LuaReadJoypad();
 		record_port(port);
 
 		/* call device line changed handlers */
@@ -4514,8 +4515,6 @@ static void playback_port(const input_port_config *port)
 	}
 }
 
-
-
 /***************************************************************************
     INPUT RECORDING
 ***************************************************************************/
@@ -5574,4 +5573,22 @@ static void execute_dumpkbd(running_machine *machine, int ref, int params, const
 	if (file != NULL)
 		fclose(file);
 
+}
+
+/* INP file handle helper functions */
+mame_file* get_record_file(running_machine* machine)
+{
+	input_port_private *portdata = machine->input_port_data;
+	return portdata->record_file;
+}
+
+mame_file* get_playback_file(running_machine* machine)
+{
+	input_port_private *portdata = machine->input_port_data;
+	return portdata->playback_file;
+}
+
+void set_port_digital(const input_port_config *port, UINT32 new_digital)
+{
+	port->state->digital = new_digital;
 }

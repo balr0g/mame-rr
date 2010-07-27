@@ -649,7 +649,7 @@ void mame_schedule_save(running_machine *machine, const char *filename)
 	mame->saveload_schedule_time = timer_get_time(machine);
 
 	/* we can't be paused since we need to clear out anonymous timers */
-	mame_pause(machine, FALSE);
+//	mame_pause(machine, FALSE);
 }
 
 
@@ -670,7 +670,7 @@ void mame_schedule_load(running_machine *machine, const char *filename)
 	mame->saveload_schedule_time = timer_get_time(machine);
 
 	/* we can't be paused since we need to clear out anonymous timers */
-	mame_pause(machine, FALSE);
+//	mame_pause(machine, FALSE);
 }
 
 
@@ -1459,6 +1459,8 @@ static void init_machine(running_machine *machine)
 	saveload_init(machine);
 	if (options_get_bool(mame_options(), OPTION_CHEAT))
 		cheat_init(machine);
+
+	lua_init(machine);
 
 	/* disallow save state registrations starting here */
 	state_save_allow_registration(machine, FALSE);

@@ -40,6 +40,8 @@ CPUS += MCS51
 CPUS += M6800
 CPUS += M6809
 CPUS += M680X0
+CPUS += M68000
+CPUS += H6280
 
 
 
@@ -59,7 +61,10 @@ SOUNDS += TMS5220
 SOUNDS += OKIM6295
 SOUNDS += HC55516
 SOUNDS += YM3812
-
+SOUNDS += YM2203
+SOUNDS += YM2608
+SOUNDS += YM2610
+SOUNDS += YM2610B
 
 
 #-------------------------------------------------
@@ -84,6 +89,11 @@ DRVLIBS = \
 	$(AUDIO)/wow.o \
 	$(DRIVERS)/gaelco.o $(VIDEO)/gaelco.o $(MACHINE)/gaelcrpt.o \
 	$(DRIVERS)/wrally.o $(MACHINE)/wrally.o $(VIDEO)/wrally.o \
+	$(DRIVERS)/cninja.o $(VIDEO)/cninja.o \
+	$(MACHINE)/deco102.o \
+	$(MACHINE)/decocrpt.o \
+	$(MACHINE)/decoprot.o \
+	$(VIDEO)/deco16ic.o \
 
 
 

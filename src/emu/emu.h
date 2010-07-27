@@ -113,4 +113,6 @@
 #include "machine/generic.h"
 #include "video/generic.h"
 
+#include "luaengine.h"
+
 #endif	/* __EMU_H__ */

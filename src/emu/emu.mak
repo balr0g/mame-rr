@@ -59,6 +59,8 @@ EMUOBJS = \
 	$(EMUOBJ)/input.o \
 	$(EMUOBJ)/inputseq.o \
 	$(EMUOBJ)/inptport.o \
+	$(EMUOBJ)/luaengine.o \
+	$(EMUOBJ)/luaconsole.o \
 	$(EMUOBJ)/mame.o \
 	$(EMUOBJ)/mconfig.o \
 	$(EMUOBJ)/memory.o \
