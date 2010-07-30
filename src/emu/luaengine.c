@@ -253,7 +253,17 @@ static int mame_parentname(lua_State *L) {
 //
 //   Returns the name of the source file for the running game.
 static int mame_sourcename(lua_State *L) {
-	lua_pushstring(L, machine->gamedrv->source_file);
+	const char *srcfile;
+	srcfile = strrchr(machine->gamedrv->source_file, '/');
+	if (!srcfile)
+		srcfile = strrchr(machine->gamedrv->source_file, '\\');
+	if (!srcfile)
+		srcfile = strrchr(machine->gamedrv->source_file, ':');
+	if (!srcfile)
+		srcfile = machine->gamedrv->source_file;
+	else
+		srcfile++;
+	lua_pushstring(L, srcfile);
 	return 1;
 }
 
