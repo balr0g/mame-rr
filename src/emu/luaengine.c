@@ -3603,12 +3603,52 @@ int MAME_LuaRerecordCountSkip() {
 	return LUA && luaRunning && skipRerecords;
 }
 
+void MAME_LuaGui() {
+	if (!LUA)
+		return;
+
+	// First, check if we're being called by anybody
+	lua_getfield(LUA, LUA_REGISTRYINDEX, guiCallbackTable);
+	
+	if (lua_isfunction(LUA, -1)) {
+		int ret;
+
+		// We call it now
+		numTries = 1000;
+		ret = lua_pcall(LUA, 0, 0, 0);
+		if (ret != 0) {
+#ifdef WIN32
+			MessageBoxA(win_window_list->hwnd, lua_tostring(LUA, -1), "Lua Error in GUI function", MB_OK);
+#else
+			mame_printf_info("Lua error in gui.register function: %s\n", lua_tostring(LUA, -1));
+#endif
+
+			// This is grounds for trashing the function
+			lua_pushnil(LUA);
+			lua_setfield(LUA, LUA_REGISTRYINDEX, guiCallbackTable);
+		}
+	}
+
+	// And wreak the stack
+	lua_settop(LUA, 0);
+
+	if (gui_used == GUI_CLEAR || !gui_enabled)
+		return;
+
+	gui_used = GUI_USED_SINCE_LAST_FRAME;
+
+	render_screen_add_quad(machine->primary_screen,
+	                       0.0f, 0.0f,
+	                       1.0f, 1.0f,
+	                       MAKE_ARGB(0xff, 0xff, 0xff, 0xff),
+	                       gui_texture, PRIMFLAG_BLENDMODE(BLENDMODE_ALPHA));
+}
 
 /**
  * Given an 8-bit screen with the indicated resolution,
  * draw the current GUI onto it.
  */
-void MAME_LuaGui(bitmap_t *bitmap) {
+/*void MAME_LuaGui(bitmap_t *bitmap) {
 //	int x,y;
 //	for (y=0; y < 50; y++) {
 //		for (x=0; x < 50; x++) {
@@ -3757,7 +3797,7 @@ void MAME_LuaGui(bitmap_t *bitmap) {
 		assert(false);
 	}
 	return;
-}
+}*/
 
 void MAME_LuaClearGui() {
 	gui_used = GUI_CLEAR;
@@ -3784,7 +3824,9 @@ void lua_init(running_machine *machine_ptr)
 
 	if (machine != machine_ptr)
 		machine = machine_ptr;
+	gui_prepare();
 	add_frame_callback(machine_ptr, MAME_LuaFrameBoundary);
+//	video_screen_register_vblank_callback(machine->primary_screen, CallRegisteredLuaFunctions(LUACALL_AFTEREMULATION), NULL);
 	CallRegisteredLuaFunctions(LUACALL_ONSTART);
 	is_init = true;
 }
