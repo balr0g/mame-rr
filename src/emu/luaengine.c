@@ -54,12 +54,12 @@ static lua_State *LUA;
 
 // Screen
 static UINT8 *XBuf;
-static int iScreenWidth  = 320;
-static int iScreenHeight = 240;
 static int iScreenBpp    = 4;
 static int iScreenPitch  = 1024;
 static int LUA_SCREEN_WIDTH  = 320;
 static int LUA_SCREEN_HEIGHT = 240;
+static int old_screen_width = 0;
+static int old_screen_height = 0;
 
 // Current working directory of the script
 static char luaCWD [_MAX_PATH] = {0};
@@ -97,7 +97,9 @@ static UINT8 lua_joypads_used;
 
 static UINT8 gui_enabled = TRUE;
 static enum { GUI_USED_SINCE_LAST_DISPLAY, GUI_USED_SINCE_LAST_FRAME, GUI_CLEAR } gui_used = GUI_CLEAR;
-static UINT8 *gui_data = NULL;
+static UINT8          * gui_data = NULL;
+static bitmap_t       * gui_bitmap = NULL;
+static render_texture * gui_texture = NULL;
 
 // Protects Lua calls from going nuts.
 // We set this to a big number like 1000 and decrement it
@@ -344,6 +346,21 @@ static int mame_unpause(lua_State *L) {
 	mame_pause(machine, FALSE);
 
 	return lua_yield(L, 0);
+}
+
+// int mame.screenwidth()
+//
+//   Gets the screen width
+int mame_screenwidth(lua_State *L) {
+	lua_pushinteger(L, LUA_SCREEN_WIDTH);
+	return 1;
+}
+// int mame.screenheight()
+//
+//   Gets the screen height
+int mame_screenheight(lua_State *L) {
+	lua_pushinteger(L, LUA_SCREEN_HEIGHT);
+	return 1;
 }
 
 
@@ -1225,8 +1242,22 @@ static int movie_stop(lua_State *L) {
 // Common code by the gui library: make sure the screen array is ready
 static void gui_prepare() {
 	int x,y;
-	if (!gui_data)
-		gui_data = (UINT8 *) malloc(LUA_SCREEN_WIDTH * LUA_SCREEN_HEIGHT * 4);
+
+	LUA_SCREEN_WIDTH  = video_screen_get_visible_area(machine->primary_screen)->max_x - video_screen_get_visible_area(machine->primary_screen)->min_x + 1;
+	LUA_SCREEN_HEIGHT = video_screen_get_visible_area(machine->primary_screen)->max_y - video_screen_get_visible_area(machine->primary_screen)->min_y + 1;
+
+	if ( (LUA_SCREEN_WIDTH != old_screen_width) || (LUA_SCREEN_HEIGHT != old_screen_height) ) {
+		if (gui_bitmap != NULL) bitmap_free(gui_bitmap);
+		gui_bitmap = bitmap_alloc(LUA_SCREEN_WIDTH, LUA_SCREEN_HEIGHT, BITMAP_FORMAT_ARGB32);
+		bitmap_fill(gui_bitmap, NULL, MAKE_ARGB(0x00,0xff,0xff,0xff));
+		gui_data = (UINT8 *)BITMAP_ADDR8(gui_bitmap,0,0);
+		gui_texture = render_texture_alloc(NULL, NULL);
+		render_texture_set_bitmap(gui_texture, gui_bitmap, NULL, TEXFORMAT_ARGB32, NULL);
+
+		old_screen_width  = LUA_SCREEN_WIDTH;
+		old_screen_height = LUA_SCREEN_HEIGHT;
+	}
+
 	if (gui_used != GUI_USED_SINCE_LAST_DISPLAY) {
 		for (y = 0; y < LUA_SCREEN_HEIGHT; y++) {
 			for (x=0; x < LUA_SCREEN_WIDTH; x++) {
@@ -1922,8 +1953,8 @@ static int gui_parsecolor(lua_State *L)
 static int gui_gdscreenshot(lua_State *L) {
 	int x,y;
 
-	int width = iScreenWidth;
-	int height = iScreenHeight;
+	int width = LUA_SCREEN_WIDTH;
+	int height = LUA_SCREEN_HEIGHT;
 
 	int size = 11 + width * height * 4;
 	char* str = (char*)malloc(size+1);
@@ -2843,8 +2874,8 @@ static int input_getcurrentinputstatus(lua_State *L) {
 		RECT t;
 		GetClientRect(win_window_list->hwnd, &t);
 		ui_input_find_mouse(machine, &x, &y, &bla);
-		x = (x / ((float)t.right / iScreenWidth));
-		y = (y / ((float)t.bottom / iScreenHeight));
+		x = (x / ((float)t.right / LUA_SCREEN_WIDTH));
+		y = (y / ((float)t.bottom / LUA_SCREEN_HEIGHT));
 	
 		lua_pushinteger(L, x);
 		lua_setfield(L, -2, "xmouse");
@@ -3188,6 +3219,8 @@ static const struct luaL_reg mamelib [] = {
 	{"registerstart", mame_registerstart},
 	{"message", mame_message},
 	{"print", print}, // sure, why not
+	{"screenwidth", mame_screenwidth},
+	{"screenheight", mame_screenheight},
 	{NULL,NULL}
 };
 
@@ -3664,18 +3697,10 @@ void MAME_LuaGui() {
 
 	int width, height, bpp, pitch;
 
-	width  = bitmap->width;
-	height = bitmap->height;
+	width  = LUA_SCREEN_WIDTH;
+	height = LUA_SCREEN_HEIGHT;
 	bpp    = bitmap->format;
 	pitch  = 0;
-
-	iScreenWidth  = width;
-	iScreenHeight = height;
-	iScreenBpp    = bpp;
-	iScreenPitch  = pitch;
-
-	LUA_SCREEN_WIDTH  = iScreenWidth;
-	LUA_SCREEN_HEIGHT = iScreenHeight;
 
 	if (!LUA)
 		return;
