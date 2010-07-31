@@ -125,6 +125,8 @@ static const char* toCString(lua_State* L, int idx=0);
 static int usingMemoryRegister=0;
 
 static std::string empty_driver("empty");
+static bool is_init = false;
+static bool run_it_once = false;
 
 /**
  * Resets emulator speed / pause states after script exit.
@@ -3303,8 +3305,9 @@ void MAME_LuaFrameBoundary(running_machine *machine_ptr) {
 		machine = machine_ptr;
 
 	// HA!
-	if (!LUA || !luaRunning)
+	if (!LUA || !luaRunning || (mame_is_paused(machine) && !run_it_once))
 		return;
+	run_it_once = false;
 
 	// Our function needs calling
 	lua_settop(LUA,0);
@@ -3470,7 +3473,9 @@ int MAME_LoadLuaCode(const char *filename) {
 		info_onstart(info_uid);
 
 	// And run it right now. :)
-//	MAME_LuaFrameBoundary(machine);
+	run_it_once = true; // run it now, even if it's paused
+	if (is_init) // but we can't run it before init time
+		MAME_LuaFrameBoundary(machine);
 
 	// Set up our protection hook to be executed once every 10,000 bytecode instructions.
 	lua_sethook(thread, MAME_LuaHookFunction, LUA_MASKCOUNT, 10000);
@@ -3780,4 +3785,5 @@ void lua_init(running_machine *machine_ptr)
 		machine = machine_ptr;
 	add_frame_callback(machine_ptr, MAME_LuaFrameBoundary);
 	CallRegisteredLuaFunctions(LUACALL_ONSTART);
+	is_init = true;
 }
