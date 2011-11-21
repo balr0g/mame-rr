@@ -1,27 +1,26 @@
 
-class gotya_state
+class gotya_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, gotya_state(machine)); }
-
-	gotya_state(running_machine &machine) { }
+	gotya_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *  videoram;
-	UINT8 *  videoram2;
-	UINT8 *  colorram;
-	UINT8 *  spriteram;
-	UINT8 *  scroll;
+	UINT8 *  m_videoram;
+	UINT8 *  m_videoram2;
+	UINT8 *  m_colorram;
+	UINT8 *  m_spriteram;
+	UINT8 *  m_scroll;
 
 	/* video-related */
-	tilemap_t  *bg_tilemap;
-	int      scroll_bit_8;
+	tilemap_t  *m_bg_tilemap;
+	int      m_scroll_bit_8;
 
 	/* sound-related */
-	int      theme_playing;
+	int      m_theme_playing;
 
 	/* devices */
-	running_device *samples;
+	device_t *m_samples;
 };
 
 
@@ -38,4 +37,4 @@ WRITE8_HANDLER( gotya_video_control_w );
 
 PALETTE_INIT( gotya );
 VIDEO_START( gotya );
-VIDEO_UPDATE( gotya );
+SCREEN_UPDATE( gotya );

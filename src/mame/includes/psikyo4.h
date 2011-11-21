@@ -7,35 +7,32 @@
 #define MASTER_CLOCK 57272700	// main oscillator frequency
 
 
-class psikyo4_state
+class psikyo4_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, psikyo4_state(machine)); }
-
-	psikyo4_state(running_machine &machine) { }
+	psikyo4_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT32 *       vidregs;
-	UINT32 *       paletteram;
-	UINT32 *       ram;
-	UINT32 *       io_select;
-	UINT32 *       bgpen_1;
-	UINT32 *       bgpen_2;
-	UINT32 *       spriteram;
-	size_t         spriteram_size;
+	UINT32 *       m_vidregs;
+	UINT32 *       m_paletteram;
+	UINT32 *       m_ram;
+	UINT32 *       m_io_select;
+	UINT32 *       m_bgpen_1;
+	UINT32 *       m_bgpen_2;
+	UINT32 *       m_spriteram;
+	size_t         m_spriteram_size;
 
 	/* video-related */
-	double         oldbrt1, oldbrt2;
-
-	/* misc */
-	UINT32         sample_offs;	// only used if ROMTEST = 1
+	double         m_oldbrt1;
+	double         m_oldbrt2;
 
 	/* devices */
-	running_device *maincpu;
+	device_t *m_maincpu;
 };
 
 
 /*----------- defined in video/psikyo4.c -----------*/
 
 VIDEO_START( psikyo4 );
-VIDEO_UPDATE( psikyo4 );
+SCREEN_UPDATE( psikyo4 );

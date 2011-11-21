@@ -381,7 +381,7 @@ static const UINT32 lfo_samples_per_step[8] = {108, 77, 71, 67, 62, 44, 8, 5};
    5.9 dB = 0, 1, 2, 3, 4, 5, 6, 7, 8....63, 63, 62, 61, 60, 59,.....2,1,0
    1.4 dB = 0, 0, 0, 0, 1, 1, 1, 1, 2,...15, 15, 15, 15, 14, 14,.....0,0,0
 
-  (1.4 dB is loosing precision as you can see)
+  (1.4 dB is losing precision as you can see)
 
   It's implemented as generator from 0..126 with step 2 then a shift
   right N times, where N is:
@@ -599,7 +599,7 @@ typedef struct
 
 typedef struct
 {
-	running_device *device;
+	device_t *device;
 	void *		param;				/* this chip parameter  */
 	double		freqbase;			/* frequency base       */
 	int			timer_prescaler;	/* timer prescaler      */
@@ -670,6 +670,11 @@ typedef struct
 	UINT32  lfo_timer_overflow; /* LFO timer overflows every N samples (depends on LFO frequency) */
 	UINT32  LFO_AM;             /* current LFO AM step */
 	UINT32  LFO_PM;             /* current LFO PM step */
+
+	INT32	m2,c1,c2;		/* Phase Modulation input for operators 2,3,4 */
+	INT32	mem;			/* one sample delay memory */
+	INT32	out_fm[8];		/* outputs of working channels */
+
 } FM_OPN;
 
 /* here's the virtual YM2612 */
@@ -684,12 +689,6 @@ typedef struct
 	int			dacen;
 	INT32		dacout;
 } YM2612;
-
-/* current chip state */
-static INT32	m2,c1,c2;		/* Phase Modulation input for operators 2,3,4 */
-static INT32	mem;			/* one sample delay memory */
-
-static INT32	out_fm[8];		/* outputs of working channels */
 
 /* log output level */
 #define LOG_ERR  3      /* ERROR       */
@@ -1005,7 +1004,7 @@ INLINE UINT8 FM_STATUS_FLAG(FM_ST *ST)
 {
 	if( COMPARE_TIMES(ST->busy_expiry_time, UNDEFINED_TIME) != 0 )
 	{
-		if (COMPARE_TIMES(ST->busy_expiry_time, FM_GET_TIME_NOW(ST->device->machine)) > 0)
+		if (COMPARE_TIMES(ST->busy_expiry_time, FM_GET_TIME_NOW(&ST->device->machine())) > 0)
 			return ST->status | 0x80;	/* with busy */
 		/* expire */
 		FM_BUSY_CLEAR(ST);
@@ -1014,8 +1013,8 @@ INLINE UINT8 FM_STATUS_FLAG(FM_ST *ST)
 }
 INLINE void FM_BUSY_SET(FM_ST *ST,int busyclock )
 {
-	TIME_TYPE expiry_period = MULTIPLY_TIME_BY_INT(ATTOTIME_IN_HZ(ST->clock), busyclock * ST->timer_prescaler);
-	ST->busy_expiry_time = ADD_TIMES(FM_GET_TIME_NOW(ST->device->machine), expiry_period);
+	TIME_TYPE expiry_period = MULTIPLY_TIME_BY_INT(attotime::from_hz(ST->clock), busyclock * ST->timer_prescaler);
+	ST->busy_expiry_time = ADD_TIMES(FM_GET_TIME_NOW(&ST->device->machine()), expiry_period);
 }
 #else
 #define FM_STATUS_FLAG(ST) ((ST)->status)
@@ -1025,9 +1024,9 @@ INLINE void FM_BUSY_SET(FM_ST *ST,int busyclock )
 
 
 /* set algorithm connection */
-static void setup_connection( FM_CH *CH, int ch )
+static void setup_connection( FM_OPN *OPN, FM_CH *CH, int ch )
 {
-	INT32 *carrier = &out_fm[ch];
+	INT32 *carrier = &OPN->out_fm[ch];
 
 	INT32 **om1 = &CH->connect1;
 	INT32 **om2 = &CH->connect3;
@@ -1035,46 +1034,47 @@ static void setup_connection( FM_CH *CH, int ch )
 
 	INT32 **memc = &CH->mem_connect;
 
-	switch( CH->ALGO ){
+	switch( CH->ALGO )
+	{
 	case 0:
 		/* M1---C1---MEM---M2---C2---OUT */
-		*om1 = &c1;
-		*oc1 = &mem;
-		*om2 = &c2;
-		*memc= &m2;
+		*om1 = &OPN->c1;
+		*oc1 = &OPN->mem;
+		*om2 = &OPN->c2;
+		*memc= &OPN->m2;
 		break;
 	case 1:
 		/* M1------+-MEM---M2---C2---OUT */
 		/*      C1-+                     */
-		*om1 = &mem;
-		*oc1 = &mem;
-		*om2 = &c2;
-		*memc= &m2;
+		*om1 = &OPN->mem;
+		*oc1 = &OPN->mem;
+		*om2 = &OPN->c2;
+		*memc= &OPN->m2;
 		break;
 	case 2:
 		/* M1-----------------+-C2---OUT */
 		/*      C1---MEM---M2-+          */
-		*om1 = &c2;
-		*oc1 = &mem;
-		*om2 = &c2;
-		*memc= &m2;
+		*om1 = &OPN->c2;
+		*oc1 = &OPN->mem;
+		*om2 = &OPN->c2;
+		*memc= &OPN->m2;
 		break;
 	case 3:
 		/* M1---C1---MEM------+-C2---OUT */
 		/*                 M2-+          */
-		*om1 = &c1;
-		*oc1 = &mem;
-		*om2 = &c2;
-		*memc= &c2;
+		*om1 = &OPN->c1;
+		*oc1 = &OPN->mem;
+		*om2 = &OPN->c2;
+		*memc= &OPN->c2;
 		break;
 	case 4:
 		/* M1---C1-+-OUT */
 		/* M2---C2-+     */
 		/* MEM: not used */
-		*om1 = &c1;
+		*om1 = &OPN->c1;
 		*oc1 = carrier;
-		*om2 = &c2;
-		*memc= &mem;	/* store it anywhere where it will not be used */
+		*om2 = &OPN->c2;
+		*memc= &OPN->mem;	/* store it anywhere where it will not be used */
 		break;
 	case 5:
 		/*    +----C1----+     */
@@ -1083,17 +1083,17 @@ static void setup_connection( FM_CH *CH, int ch )
 		*om1 = 0;	/* special mark */
 		*oc1 = carrier;
 		*om2 = carrier;
-		*memc= &m2;
+		*memc= &OPN->m2;
 		break;
 	case 6:
 		/* M1---C1-+     */
 		/*      M2-+-OUT */
 		/*      C2-+     */
 		/* MEM: not used */
-		*om1 = &c1;
+		*om1 = &OPN->c1;
 		*oc1 = carrier;
 		*om2 = carrier;
-		*memc= &mem;	/* store it anywhere where it will not be used */
+		*memc= &OPN->mem;	/* store it anywhere where it will not be used */
 		break;
 	case 7:
 		/* M1-+     */
@@ -1104,7 +1104,7 @@ static void setup_connection( FM_CH *CH, int ch )
 		*om1 = carrier;
 		*oc1 = carrier;
 		*om2 = carrier;
-		*memc= &mem;	/* store it anywhere where it will not be used */
+		*memc= &OPN->mem;	/* store it anywhere where it will not be used */
 		break;
 	}
 
@@ -1554,7 +1554,8 @@ INLINE void refresh_fc_eg_slot(FM_OPN *OPN, FM_SLOT *SLOT , int fc , int kc )
 /* Changed from INLINE to static to work around gcc 4.2.1 codegen bug */
 static void refresh_fc_eg_chan(FM_OPN *OPN, FM_CH *CH )
 {
-	if( CH->SLOT[SLOT1].Incr==-1){
+	if( CH->SLOT[SLOT1].Incr==-1)
+	{
 		int fc = CH->fc;
 		int kc = CH->kcode;
 		refresh_fc_eg_slot(OPN, &CH->SLOT[SLOT1] , fc , kc );
@@ -1592,7 +1593,7 @@ INLINE void chan_calc(YM2612 *F2612, FM_OPN *OPN, FM_CH *CH)
 {
   UINT32 AM = OPN->LFO_AM >> CH->ams;
 
-  m2 = c1 = c2 = mem = 0;
+  OPN->m2 = OPN->c1 = OPN->c2 = OPN->mem = 0;
 
   *CH->mem_connect = CH->mem_value;  /* restore delayed sample (MEM) value to m2 or c2 */
 
@@ -1601,10 +1602,13 @@ INLINE void chan_calc(YM2612 *F2612, FM_OPN *OPN, FM_CH *CH)
     INT32 out = CH->op1_out[0] + CH->op1_out[1];
     CH->op1_out[0] = CH->op1_out[1];
 
-    if( !CH->connect1 ){
+    if( !CH->connect1 )
+    {
       /* algorithm 5  */
-      mem = c1 = c2 = CH->op1_out[0];
-    }else{
+      OPN->mem = OPN->c1 = OPN->c2 = CH->op1_out[0];
+    }
+    else
+    {
       /* other algorithms */
       *CH->connect1 += CH->op1_out[0];
     }
@@ -1622,19 +1626,19 @@ INLINE void chan_calc(YM2612 *F2612, FM_OPN *OPN, FM_CH *CH)
 
   eg_out = volume_calc(&CH->SLOT[SLOT3]);
   if( eg_out < ENV_QUIET )    /* SLOT 3 */
-    *CH->connect3 += op_calc(CH->SLOT[SLOT3].phase, eg_out, m2);
+    *CH->connect3 += op_calc(CH->SLOT[SLOT3].phase, eg_out, OPN->m2);
 
   eg_out = volume_calc(&CH->SLOT[SLOT2]);
   if( eg_out < ENV_QUIET )    /* SLOT 2 */
-    *CH->connect2 += op_calc(CH->SLOT[SLOT2].phase, eg_out, c1);
+    *CH->connect2 += op_calc(CH->SLOT[SLOT2].phase, eg_out, OPN->c1);
 
   eg_out = volume_calc(&CH->SLOT[SLOT4]);
   if( eg_out < ENV_QUIET )    /* SLOT 4 */
-    *CH->connect4 += op_calc(CH->SLOT[SLOT4].phase, eg_out, c2);
+    *CH->connect4 += op_calc(CH->SLOT[SLOT4].phase, eg_out, OPN->c2);
 
 
   /* store current MEM */
-  CH->mem_value = mem;
+  CH->mem_value = OPN->mem;
 
   /* update phase counters AFTER output calculations */
   if(CH->pms)
@@ -1678,45 +1682,44 @@ INLINE void CSMKeyControll(FM_OPN *OPN, FM_CH *CH)
 	OPN->SL3.key_csm = 1;
 }
 
-#ifdef __STATE_H__
+#ifdef __SAVE_H__
 /* FM channel save , internal state only */
-static void FMsave_state_channel(running_device *device,FM_CH *CH,int num_ch)
+static void FMsave_state_channel(device_t *device,FM_CH *CH,int num_ch)
 {
 	int slot , ch;
 
 	for(ch=0;ch<num_ch;ch++,CH++)
 	{
 		/* channel */
-		state_save_register_device_item_array(device, ch, CH->op1_out);
-		state_save_register_device_item(device, ch, CH->fc);
+		device->save_item(NAME(CH->op1_out), ch);
+		device->save_item(NAME(CH->fc), ch);
 		/* slots */
 		for(slot=0;slot<4;slot++)
 		{
 			FM_SLOT *SLOT = &CH->SLOT[slot];
-			state_save_register_device_item(device, ch * 4 + slot, SLOT->phase);
-			state_save_register_device_item(device, ch * 4 + slot, SLOT->state);
-			state_save_register_device_item(device, ch * 4 + slot, SLOT->volume);
+			device->save_item(NAME(SLOT->phase), ch * 4 + slot);
+			device->save_item(NAME(SLOT->state), ch * 4 + slot);
+			device->save_item(NAME(SLOT->volume), ch * 4 + slot);
 		}
 	}
 }
 
-static void FMsave_state_st(running_device *device,FM_ST *ST)
+static void FMsave_state_st(device_t *device,FM_ST *ST)
 {
 #if FM_BUSY_FLAG_SUPPORT
-	state_save_register_device_item(device, 0, ST->busy_expiry_time.seconds );
-	state_save_register_device_item(device, 0, ST->busy_expiry_time.attoseconds );
+	device->save_item(NAME(ST->busy_expiry_time) );
 #endif
-	state_save_register_device_item(device, 0, ST->address );
-	state_save_register_device_item(device, 0, ST->irq     );
-	state_save_register_device_item(device, 0, ST->irqmask );
-	state_save_register_device_item(device, 0, ST->status  );
-	state_save_register_device_item(device, 0, ST->mode    );
-	state_save_register_device_item(device, 0, ST->prescaler_sel );
-	state_save_register_device_item(device, 0, ST->fn_h );
-	state_save_register_device_item(device, 0, ST->TA   );
-	state_save_register_device_item(device, 0, ST->TAC  );
-	state_save_register_device_item(device, 0, ST->TB  );
-	state_save_register_device_item(device, 0, ST->TBC  );
+	device->save_item(NAME(ST->address) );
+	device->save_item(NAME(ST->irq)     );
+	device->save_item(NAME(ST->irqmask) );
+	device->save_item(NAME(ST->status)  );
+	device->save_item(NAME(ST->mode)    );
+	device->save_item(NAME(ST->prescaler_sel) );
+	device->save_item(NAME(ST->fn_h) );
+	device->save_item(NAME(ST->TA)   );
+	device->save_item(NAME(ST->TAC)  );
+	device->save_item(NAME(ST->TB)  );
+	device->save_item(NAME(ST->TBC)  );
 }
 #endif /* _STATE_H */
 
@@ -1727,7 +1730,8 @@ static void OPNWriteMode(FM_OPN *OPN, int r, int v)
 	UINT8 c;
 	FM_CH *CH;
 
-	switch(r){
+	switch(r)
+	{
 	case 0x21:	/* Test */
 		break;
 	case 0x22:	/* LFO FREQ (YM2608/YM2610/YM2610B/YM2612) */
@@ -1909,7 +1913,8 @@ static void OPNWriteReg(FM_OPN *OPN, int r, int v)
 		break;
 
 	case 0xa0:
-		switch( OPN_SLOT(r) ){
+		switch( OPN_SLOT(r) )
+		{
 		case 0:		/* 0xa0-0xa2 : FNUM1 */
 			{
 				UINT32 fn = (((UINT32)( (OPN->ST.fn_h)&7))<<8) + v;
@@ -1949,13 +1954,14 @@ static void OPNWriteReg(FM_OPN *OPN, int r, int v)
 		break;
 
 	case 0xb0:
-		switch( OPN_SLOT(r) ){
+		switch( OPN_SLOT(r) )
+		{
 		case 0:		/* 0xb0-0xb2 : FB,ALGO */
 			{
 				int feedback = (v>>3)&7;
 				CH->ALGO = v&7;
 				CH->FB   = feedback ? feedback+6 : 0;
-				setup_connection( CH, c );
+				setup_connection( OPN, CH, c );
 			}
 			break;
 		case 1:		/* 0xb4-0xb6 : L , R , AMS , PMS (YM2612/YM2610B/YM2610/YM2608) */
@@ -2164,16 +2170,15 @@ static void init_tables(void)
 /*******************************************************************************/
 /*      YM2612 local section                                                   */
 /*******************************************************************************/
-static int dacen;
 
 /* Generate samples for one of the YM2612s */
 void ym2612_update_one(void *chip, FMSAMPLE **buffer, int length)
 {
 	YM2612 *F2612 = (YM2612 *)chip;
 	FM_OPN *OPN   = &F2612->OPN;
+	INT32 *out_fm = OPN->out_fm;
 	int i;
 	FMSAMPLE  *bufL,*bufR;
-	INT32 dacout  = F2612->dacout;
 	FM_CH	*cch[6];
 	int lt,rt;
 
@@ -2187,8 +2192,6 @@ void ym2612_update_one(void *chip, FMSAMPLE **buffer, int length)
 	cch[3]   = &F2612->CH[3];
 	cch[4]   = &F2612->CH[4];
 	cch[5]   = &F2612->CH[5];
-	/* DAC mode */
-	dacen = F2612->dacen;
 
 	/* refresh PG and EG */
 	refresh_fc_eg_chan( OPN, cch[0] );
@@ -2233,8 +2236,8 @@ void ym2612_update_one(void *chip, FMSAMPLE **buffer, int length)
 		chan_calc(F2612, OPN, cch[2]);
 		chan_calc(F2612, OPN, cch[3]);
 		chan_calc(F2612, OPN, cch[4]);
-		if( dacen )
-			*cch[5]->connect4 += dacout;
+		if( F2612->dacen )
+			*cch[5]->connect4 += F2612->dacout;
 		else
 			chan_calc(F2612, OPN, cch[5]);
 
@@ -2294,7 +2297,7 @@ void ym2612_update_one(void *chip, FMSAMPLE **buffer, int length)
 		bufL[i] = lt;
 		bufR[i] = rt;
 
-		/* CSM mode: if CSM Key ON has occured, CSM Key OFF need to be sent       */
+		/* CSM mode: if CSM Key ON has occurred, CSM Key OFF need to be sent       */
 		/* only if Timer A does not overflow again (i.e CSM Key ON not set again) */
 		OPN->SL3.key_csm <<= 1;
 
@@ -2314,7 +2317,7 @@ void ym2612_update_one(void *chip, FMSAMPLE **buffer, int length)
 	INTERNAL_TIMER_B(&OPN->ST,length)
 }
 
-#ifdef __STATE_H__
+#ifdef __SAVE_H__
 void ym2612_postload(void *chip)
 {
 	if (chip)
@@ -2345,28 +2348,28 @@ void ym2612_postload(void *chip)
 	}
 }
 
-static void YM2612_save_state(YM2612 *F2612, running_device *device)
+static void YM2612_save_state(YM2612 *F2612, device_t *device)
 {
-	state_save_register_device_item_array(device, 0, F2612->REGS);
+	device->save_item(NAME(F2612->REGS));
 	FMsave_state_st(device,&F2612->OPN.ST);
 	FMsave_state_channel(device,F2612->CH,6);
 	/* 3slots */
-	state_save_register_device_item_array(device, 0, F2612->OPN.SL3.fc);
-	state_save_register_device_item(device, 0, F2612->OPN.SL3.fn_h);
-	state_save_register_device_item_array(device, 0, F2612->OPN.SL3.kcode);
+	device->save_item(NAME(F2612->OPN.SL3.fc));
+	device->save_item(NAME(F2612->OPN.SL3.fn_h));
+	device->save_item(NAME(F2612->OPN.SL3.kcode));
 	/* address register1 */
-	state_save_register_device_item(device, 0, F2612->addr_A1);
+	device->save_item(NAME(F2612->addr_A1));
 }
 #endif /* _STATE_H */
 
 /* initialize YM2612 emulator(s) */
-void * ym2612_init(void *param, running_device *device, int clock, int rate,
+void * ym2612_init(void *param, device_t *device, int clock, int rate,
                FM_TIMERHANDLER timer_handler,FM_IRQHANDLER IRQHandler)
 {
 	YM2612 *F2612;
 
 	/* allocate extend state space */
-	F2612 = auto_alloc_clear(device->machine, YM2612);
+	F2612 = auto_alloc_clear(device->machine(), YM2612);
 	/* allocate total level table (128kb space) */
 	init_tables();
 
@@ -2382,7 +2385,7 @@ void * ym2612_init(void *param, running_device *device, int clock, int rate,
 	F2612->OPN.ST.timer_handler = timer_handler;
 	F2612->OPN.ST.IRQ_Handler   = IRQHandler;
 
-#ifdef __STATE_H__
+#ifdef __SAVE_H__
 	YM2612_save_state(F2612, device);
 #endif
 	return F2612;
@@ -2394,7 +2397,7 @@ void ym2612_shutdown(void *chip)
 	YM2612 *F2612 = (YM2612 *)chip;
 
 	FMCloseTable();
-	auto_free(F2612->OPN.ST.device->machine, F2612);
+	auto_free(F2612->OPN.ST.device->machine(), F2612);
 }
 
 /* reset one of chip */
@@ -2455,7 +2458,8 @@ int ym2612_write(void *chip, int a, UINT8 v)
 
 	v &= 0xff;	/* adjust to 8 bit bus */
 
-	switch( a&3){
+	switch( a&3)
+	{
 	case 0:	/* address port 0 */
 		F2612->OPN.ST.address = v;
 		F2612->addr_A1 = 0;
@@ -2515,7 +2519,8 @@ UINT8 ym2612_read(void *chip,int a)
 {
 	YM2612 *F2612 = (YM2612 *)chip;
 
-	switch( a&3){
+	switch( a&3)
+	{
 	case 0:	/* status 0 */
 		return FM_STATUS_FLAG(&F2612->OPN.ST);
 	case 1:

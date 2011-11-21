@@ -47,32 +47,20 @@ This info came from http://www.ne.jp/asahi/cc-sakura/akkun/old/fryski.html
 #include "cpu/m6800/m6800.h"
 #include "sound/ay8910.h"
 #include "sound/dac.h"
-
-extern UINT8 *seicross_videoram;
-extern UINT8 *seicross_colorram;
-extern UINT8 *seicross_row_scroll;
-
-extern WRITE8_HANDLER( seicross_videoram_w );
-extern WRITE8_HANDLER( seicross_colorram_w );
-
-extern PALETTE_INIT( seicross );
-extern VIDEO_START( seicross );
-extern VIDEO_UPDATE( seicross );
-
-static UINT8 *nvram;
-static size_t nvram_size;
-
-static UINT8 portb;
-
+#include "includes/seicross.h"
 
 static NVRAM_HANDLER( seicross )
 {
+	seicross_state *state = machine.driver_data<seicross_state>();
+	UINT8 *nvram = state->m_nvram;
+	size_t nvram_size = state->m_nvram_size;
+
 	if (read_or_write)
-		mame_fwrite(file,nvram,nvram_size);
+		file->write(nvram,nvram_size);
 	else
 	{
 		if (file)
-			mame_fread(file,nvram,nvram_size);
+			file->read(nvram,nvram_size);
 		else
 		{
 			/* fill in the default values */
@@ -95,60 +83,64 @@ static MACHINE_RESET( friskyt )
 
 static READ8_DEVICE_HANDLER( friskyt_portB_r )
 {
-	return (portb & 0x9f) | (input_port_read_safe(device->machine, "DEBUG", 0) & 0x60);
+	seicross_state *state = device->machine().driver_data<seicross_state>();
+
+	return (state->m_portb & 0x9f) | (input_port_read_safe(device->machine(), "DEBUG", 0) & 0x60);
 }
 
 static WRITE8_DEVICE_HANDLER( friskyt_portB_w )
 {
-//logerror("PC %04x: 8910 port B = %02x\n",cpu_get_pc(space->cpu),data);
+	seicross_state *state = device->machine().driver_data<seicross_state>();
+
+	//logerror("PC %04x: 8910 port B = %02x\n", cpu_get_pc(&space->device()), data);
 	/* bit 0 is IRQ enable */
-	cpu_interrupt_enable(device->machine->device("maincpu"), data & 1);
+	cpu_interrupt_enable(device->machine().device("maincpu"), data & 1);
 
 	/* bit 1 flips screen */
 
 	/* bit 2 resets the microcontroller */
-	if (((portb & 4) == 0) && (data & 4))
+	if (((state->m_portb & 4) == 0) && (data & 4))
 	{
 		/* reset and start the protection mcu */
-		cputag_set_input_line(device->machine, "mcu", INPUT_LINE_RESET, PULSE_LINE);
-		cputag_set_input_line(device->machine, "mcu", INPUT_LINE_HALT, CLEAR_LINE);
+		cputag_set_input_line(device->machine(), "mcu", INPUT_LINE_RESET, PULSE_LINE);
+		cputag_set_input_line(device->machine(), "mcu", INPUT_LINE_HALT, CLEAR_LINE);
 	}
 
 	/* other bits unknown */
-	portb = data;
+	state->m_portb = data;
 }
 
 
-static ADDRESS_MAP_START( main_map, ADDRESS_SPACE_PROGRAM, 8 )
+static ADDRESS_MAP_START( main_map, AS_PROGRAM, 8 )
 	AM_RANGE(0x0000, 0x77ff) AM_ROM
 	AM_RANGE(0x7800, 0x7fff) AM_RAM AM_SHARE("share1")
-	AM_RANGE(0x8820, 0x887f) AM_RAM AM_BASE_SIZE_GENERIC(spriteram)
-	AM_RANGE(0x9000, 0x93ff) AM_RAM_WRITE(seicross_videoram_w) AM_BASE(&seicross_videoram)	/* video RAM */
-	AM_RANGE(0x9800, 0x981f) AM_RAM AM_BASE(&seicross_row_scroll)
-	AM_RANGE(0x9880, 0x989f) AM_WRITEONLY AM_BASE_SIZE_GENERIC(spriteram2)
-	AM_RANGE(0x9c00, 0x9fff) AM_RAM_WRITE(seicross_colorram_w) AM_BASE(&seicross_colorram)
+	AM_RANGE(0x8820, 0x887f) AM_RAM AM_BASE_SIZE_MEMBER(seicross_state, m_spriteram, m_spriteram_size)
+	AM_RANGE(0x9000, 0x93ff) AM_RAM_WRITE(seicross_videoram_w) AM_BASE_MEMBER(seicross_state, m_videoram)	/* video RAM */
+	AM_RANGE(0x9800, 0x981f) AM_RAM AM_BASE_MEMBER(seicross_state, m_row_scroll)
+	AM_RANGE(0x9880, 0x989f) AM_WRITEONLY AM_BASE_SIZE_MEMBER(seicross_state, m_spriteram2, m_spriteram2_size)
+	AM_RANGE(0x9c00, 0x9fff) AM_RAM_WRITE(seicross_colorram_w) AM_BASE_MEMBER(seicross_state, m_colorram)
 	AM_RANGE(0xa000, 0xa000) AM_READ_PORT("IN0")		/* IN0 */
 	AM_RANGE(0xa800, 0xa800) AM_READ_PORT("IN1")		/* IN1 */
 	AM_RANGE(0xb000, 0xb000) AM_READ_PORT("TEST")		/* test */
 	AM_RANGE(0xb800, 0xb800) AM_READ(watchdog_reset_r)
 ADDRESS_MAP_END
 
-static ADDRESS_MAP_START( main_portmap, ADDRESS_SPACE_IO, 8 )
+static ADDRESS_MAP_START( main_portmap, AS_IO, 8 )
 	ADDRESS_MAP_GLOBAL_MASK(0xff)
 	AM_RANGE(0x00, 0x01) AM_MIRROR(0x08) AM_DEVWRITE("aysnd", ay8910_address_data_w)
 	AM_RANGE(0x04, 0x04) AM_MIRROR(0x08) AM_DEVREAD("aysnd", ay8910_r)
 ADDRESS_MAP_END
 
 
-static ADDRESS_MAP_START( mcu_nvram_map, ADDRESS_SPACE_PROGRAM, 8 )
+static ADDRESS_MAP_START( mcu_nvram_map, AS_PROGRAM, 8 )
 	AM_RANGE(0x0000, 0x007f) AM_RAM
-	AM_RANGE(0x1000, 0x10ff) AM_RAM AM_BASE(&nvram) AM_SIZE(&nvram_size)
+	AM_RANGE(0x1000, 0x10ff) AM_RAM AM_BASE_SIZE_MEMBER(seicross_state, m_nvram, m_nvram_size)
 	AM_RANGE(0x2000, 0x2000) AM_DEVWRITE("dac", dac_w)
 	AM_RANGE(0x8000, 0xf7ff) AM_ROM
 	AM_RANGE(0xf800, 0xffff) AM_RAM AM_SHARE("share1")
 ADDRESS_MAP_END
 
-static ADDRESS_MAP_START( mcu_no_nvram_map, ADDRESS_SPACE_PROGRAM, 8 )
+static ADDRESS_MAP_START( mcu_no_nvram_map, AS_PROGRAM, 8 )
 	AM_RANGE(0x0000, 0x007f) AM_RAM
 	AM_RANGE(0x1003, 0x1003) AM_READ_PORT("DSW1")		/* DSW1 */
 	AM_RANGE(0x1005, 0x1005) AM_READ_PORT("DSW2")		/* DSW2 */
@@ -399,58 +391,57 @@ static const ay8910_interface ay8910_config =
 };
 
 
-static MACHINE_DRIVER_START( nvram )
+static MACHINE_CONFIG_START( nvram, seicross_state )
 
 	/* basic machine hardware */
-	MDRV_CPU_ADD("maincpu", Z80, 3072000)	/* 3.072 MHz? */
-	MDRV_CPU_PROGRAM_MAP(main_map)
-	MDRV_CPU_IO_MAP(main_portmap)
-	MDRV_CPU_VBLANK_INT("screen", irq0_line_hold)
+	MCFG_CPU_ADD("maincpu", Z80, 3072000)	/* 3.072 MHz? */
+	MCFG_CPU_PROGRAM_MAP(main_map)
+	MCFG_CPU_IO_MAP(main_portmap)
+	MCFG_CPU_VBLANK_INT("screen", irq0_line_hold)
 
-	MDRV_CPU_ADD("mcu", NSC8105, 6000000)	/* ??? */
-	MDRV_CPU_PROGRAM_MAP(mcu_nvram_map)
+	MCFG_CPU_ADD("mcu", NSC8105, 6000000)	/* ??? */
+	MCFG_CPU_PROGRAM_MAP(mcu_nvram_map)
 
-	MDRV_QUANTUM_TIME(HZ(1200))	/* 20 CPU slices per frame - an high value to ensure proper */
+	MCFG_QUANTUM_TIME(attotime::from_hz(1200))	/* 20 CPU slices per frame - an high value to ensure proper */
 						/* synchronization of the CPUs */
-	MDRV_MACHINE_RESET(friskyt)
-	MDRV_NVRAM_HANDLER(seicross)
+	MCFG_MACHINE_RESET(friskyt)
+	MCFG_NVRAM_HANDLER(seicross)
 
 	/* video hardware */
-	MDRV_SCREEN_ADD("screen", RASTER)
-	MDRV_SCREEN_REFRESH_RATE(60)
-	MDRV_SCREEN_VBLANK_TIME(ATTOSECONDS_IN_USEC(2500) /* not accurate */	/* frames per second, vblank duration */)
-	MDRV_SCREEN_FORMAT(BITMAP_FORMAT_INDEXED16)
-	MDRV_SCREEN_SIZE(32*8, 32*8)
-	MDRV_SCREEN_VISIBLE_AREA(0*8, 32*8-1, 2*8, 30*8-1)
+	MCFG_SCREEN_ADD("screen", RASTER)
+	MCFG_SCREEN_REFRESH_RATE(60)
+	MCFG_SCREEN_VBLANK_TIME(ATTOSECONDS_IN_USEC(2500) /* not accurate */	/* frames per second, vblank duration */)
+	MCFG_SCREEN_FORMAT(BITMAP_FORMAT_INDEXED16)
+	MCFG_SCREEN_SIZE(32*8, 32*8)
+	MCFG_SCREEN_VISIBLE_AREA(0*8, 32*8-1, 2*8, 30*8-1)
+	MCFG_SCREEN_UPDATE(seicross)
 
-	MDRV_GFXDECODE(seicross)
-	MDRV_PALETTE_LENGTH(64)
+	MCFG_GFXDECODE(seicross)
+	MCFG_PALETTE_LENGTH(64)
 
-	MDRV_PALETTE_INIT(seicross)
-	MDRV_VIDEO_START(seicross)
-	MDRV_VIDEO_UPDATE(seicross)
+	MCFG_PALETTE_INIT(seicross)
+	MCFG_VIDEO_START(seicross)
 
 	/* sound hardware */
-	MDRV_SPEAKER_STANDARD_MONO("mono")
+	MCFG_SPEAKER_STANDARD_MONO("mono")
 
-	MDRV_SOUND_ADD("aysnd", AY8910, 1536000)
-	MDRV_SOUND_CONFIG(ay8910_config)
-	MDRV_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
+	MCFG_SOUND_ADD("aysnd", AY8910, 1536000)
+	MCFG_SOUND_CONFIG(ay8910_config)
+	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
 
-	MDRV_SOUND_ADD("dac", DAC, 0)
-	MDRV_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
-MACHINE_DRIVER_END
+	MCFG_SOUND_ADD("dac", DAC, 0)
+	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
+MACHINE_CONFIG_END
 
 
-static MACHINE_DRIVER_START( no_nvram )
+static MACHINE_CONFIG_DERIVED( no_nvram, nvram )
 
 	/* basic machine hardware */
-	MDRV_IMPORT_FROM(nvram)
-	MDRV_CPU_MODIFY("mcu")
-	MDRV_CPU_PROGRAM_MAP(mcu_no_nvram_map)
+	MCFG_CPU_MODIFY("mcu")
+	MCFG_CPU_PROGRAM_MAP(mcu_no_nvram_map)
 
-	MDRV_NVRAM_HANDLER(0)
-MACHINE_DRIVER_END
+	MCFG_NVRAM_HANDLER(0)
+MACHINE_CONFIG_END
 
 
 /***************************************************************************

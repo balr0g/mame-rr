@@ -4,28 +4,27 @@
 
 *************************************************************************/
 
-class tumblep_state
+class tumblep_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, tumblep_state(machine)); }
-
-	tumblep_state(running_machine &machine) { }
+	tumblep_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT16 *  pf1_rowscroll;
-	UINT16 *  pf2_rowscroll;
-	UINT16 *  spriteram;
-//  UINT16 *  paletteram;    // currently this uses generic palette handling (in deco16ic.c)
-	size_t    spriteram_size;
+	UINT16 *  m_pf1_rowscroll;
+	UINT16 *  m_pf2_rowscroll;
+	UINT16 *  m_spriteram;
+//  UINT16 *  m_paletteram;    // currently this uses generic palette handling (in decocomn.c)
+	size_t    m_spriteram_size;
 
 	/* devices */
-	running_device *maincpu;
-	running_device *audiocpu;
-	running_device *deco16ic;
+	device_t *m_maincpu;
+	device_t *m_audiocpu;
+	device_t *m_deco_tilegen1;
 };
 
 
 
 /*----------- defined in video/tumblep.c -----------*/
 
-VIDEO_UPDATE( tumblep );
+SCREEN_UPDATE( tumblep );

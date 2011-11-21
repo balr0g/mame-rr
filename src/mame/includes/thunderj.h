@@ -6,21 +6,17 @@
 
 #include "machine/atarigen.h"
 
-class thunderj_state
+class thunderj_state : public atarigen_state
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, thunderj_state(machine)); }
+	thunderj_state(const machine_config &mconfig, device_type type, const char *tag)
+		: atarigen_state(mconfig, type, tag) { }
 
-	thunderj_state(running_machine &machine) { }
-
-	atarigen_state	atarigen;
-	UINT8			alpha_tile_bank;
+	UINT8			m_alpha_tile_bank;
 };
 
 
 /*----------- defined in video/thunderj.c -----------*/
 
 VIDEO_START( thunderj );
-VIDEO_UPDATE( thunderj );
-
-void thunderj_mark_high_palette(bitmap_t *bitmap, UINT16 *pf, UINT16 *mo, int x, int y);
+SCREEN_UPDATE( thunderj );

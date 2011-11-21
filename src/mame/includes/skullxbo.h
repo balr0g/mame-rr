@@ -6,14 +6,11 @@
 
 #include "machine/atarigen.h"
 
-class skullxbo_state
+class skullxbo_state : public atarigen_state
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, skullxbo_state(machine)); }
-
-	skullxbo_state(running_machine &machine) { }
-
-	atarigen_state	atarigen;
+	skullxbo_state(const machine_config &mconfig, device_type type, const char *tag)
+		: atarigen_state(mconfig, type, tag) { }
 };
 
 
@@ -25,6 +22,6 @@ WRITE16_HANDLER( skullxbo_yscroll_w );
 WRITE16_HANDLER( skullxbo_mobmsb_w );
 
 VIDEO_START( skullxbo );
-VIDEO_UPDATE( skullxbo );
+SCREEN_UPDATE( skullxbo );
 
-void skullxbo_scanline_update(running_machine *machine, int param);
+void skullxbo_scanline_update(running_machine &machine, int param);

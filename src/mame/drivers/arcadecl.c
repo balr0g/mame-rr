@@ -68,8 +68,9 @@
 
 #include "emu.h"
 #include "cpu/m68000/m68000.h"
-#include "includes/arcadecl.h"
 #include "sound/okim6295.h"
+#include "video/atarimo.h"
+#include "includes/arcadecl.h"
 
 
 #define MASTER_CLOCK		XTAL_14_31818MHz
@@ -81,10 +82,10 @@
  *
  *************************************/
 
-static void update_interrupts(running_machine *machine)
+static void update_interrupts(running_machine &machine)
 {
-	rampart_state *state = (rampart_state *)machine->driver_data;
-	cputag_set_input_line(machine, "maincpu", 4, state->atarigen.scanline_int_state ? ASSERT_LINE : CLEAR_LINE);
+	arcadecl_state *state = machine.driver_data<arcadecl_state>();
+	cputag_set_input_line(machine, "maincpu", 4, state->m_scanline_int_state ? ASSERT_LINE : CLEAR_LINE);
 }
 
 
@@ -92,7 +93,7 @@ static void scanline_update(screen_device &screen, int scanline)
 {
 	/* generate 32V signals */
 	if ((scanline & 32) == 0)
-		atarigen_scanline_int_gen(screen.machine->device("maincpu"));
+		atarigen_scanline_int_gen(screen.machine().device("maincpu"));
 }
 
 
@@ -111,11 +112,11 @@ static MACHINE_START( arcadecl )
 
 static MACHINE_RESET( arcadecl )
 {
-	rampart_state *state = (rampart_state *)machine->driver_data;
+	arcadecl_state *state = machine.driver_data<arcadecl_state>();
 
-	atarigen_eeprom_reset(&state->atarigen);
-	atarigen_interrupt_reset(&state->atarigen, update_interrupts);
-	atarigen_scanline_timer_reset(*machine->primary_screen, scanline_update, 32);
+	atarigen_eeprom_reset(state);
+	atarigen_interrupt_reset(state, update_interrupts);
+	atarigen_scanline_timer_reset(*machine.primary_screen, scanline_update, 32);
 }
 
 
@@ -137,9 +138,9 @@ static WRITE16_HANDLER( latch_w )
 	/* lower byte being modified? */
 	if (ACCESSING_BITS_0_7)
 	{
-		okim6295_device *oki = space->machine->device<okim6295_device>("oki");
+		okim6295_device *oki = space->machine().device<okim6295_device>("oki");
 		oki->set_bank_base((data & 0x80) ? 0x40000 : 0x00000);
-		atarigen_set_oki6295_vol(space->machine, (data & 0x001f) * 100 / 0x1f);
+		atarigen_set_oki6295_vol(space->machine(), (data & 0x001f) * 100 / 0x1f);
 	}
 }
 
@@ -151,13 +152,13 @@ static WRITE16_HANDLER( latch_w )
  *
  *************************************/
 
-static ADDRESS_MAP_START( main_map, ADDRESS_SPACE_PROGRAM, 16 )
+static ADDRESS_MAP_START( main_map, AS_PROGRAM, 16 )
 	AM_RANGE(0x000000, 0x0fffff) AM_ROM
-	AM_RANGE(0x200000, 0x21ffff) AM_RAM AM_BASE_MEMBER(rampart_state, bitmap)
+	AM_RANGE(0x200000, 0x21ffff) AM_RAM AM_BASE_MEMBER(arcadecl_state, m_bitmap)
 	AM_RANGE(0x3c0000, 0x3c07ff) AM_RAM_WRITE(atarigen_expanded_666_paletteram_w) AM_BASE_GENERIC(paletteram)
-	AM_RANGE(0x3e0000, 0x3e07ff) AM_RAM_WRITE(atarimo_0_spriteram_w) AM_BASE(&atarimo_0_spriteram)
+	AM_RANGE(0x3e0000, 0x3e07ff) AM_READWRITE(atarimo_0_spriteram_r, atarimo_0_spriteram_w)
 	AM_RANGE(0x3e0800, 0x3effbf) AM_RAM
-	AM_RANGE(0x3effc0, 0x3effff) AM_RAM_WRITE(atarimo_0_slipram_w) AM_BASE(&atarimo_0_slipram)
+	AM_RANGE(0x3effc0, 0x3effff) AM_READWRITE(atarimo_0_slipram_r, atarimo_0_slipram_w)
 	AM_RANGE(0x640000, 0x640001) AM_READ_PORT("PLAYER1")
 	AM_RANGE(0x640002, 0x640003) AM_READ_PORT("PLAYER2")
 	AM_RANGE(0x640010, 0x640011) AM_READ_PORT("STATUS")
@@ -168,8 +169,8 @@ static ADDRESS_MAP_START( main_map, ADDRESS_SPACE_PROGRAM, 16 )
 	AM_RANGE(0x640026, 0x640027) AM_READ_PORT("TRACKY1")
 	AM_RANGE(0x640040, 0x64004f) AM_WRITE(latch_w)
 	AM_RANGE(0x640060, 0x64006f) AM_WRITE(atarigen_eeprom_enable_w)
-	AM_RANGE(0x641000, 0x641fff) AM_READWRITE(atarigen_eeprom_r, atarigen_eeprom_w) AM_BASE_SIZE_MEMBER(rampart_state, atarigen.eeprom, atarigen.eeprom_size)
-	AM_RANGE(0x642000, 0x642001) AM_DEVREADWRITE8("oki", okim6295_r, okim6295_w, 0xff00)
+	AM_RANGE(0x641000, 0x641fff) AM_READWRITE(atarigen_eeprom_r, atarigen_eeprom_w) AM_SHARE("eeprom")
+	AM_RANGE(0x642000, 0x642001) AM_DEVREADWRITE8_MODERN("oki", okim6295_device, read, write, 0xff00)
 	AM_RANGE(0x646000, 0x646fff) AM_WRITE(atarigen_scanline_int_ack_w)
 	AM_RANGE(0x647000, 0x647fff) AM_WRITE(watchdog_reset16_w)
 ADDRESS_MAP_END
@@ -323,38 +324,37 @@ GFXDECODE_END
  *
  *************************************/
 
-static MACHINE_DRIVER_START( arcadecl )
-	MDRV_DRIVER_DATA(rampart_state)
+static MACHINE_CONFIG_START( arcadecl, arcadecl_state )
 
 	/* basic machine hardware */
-	MDRV_CPU_ADD("maincpu", M68000, MASTER_CLOCK)
-	MDRV_CPU_PROGRAM_MAP(main_map)
-	MDRV_CPU_VBLANK_INT("screen", atarigen_video_int_gen)
+	MCFG_CPU_ADD("maincpu", M68000, MASTER_CLOCK)
+	MCFG_CPU_PROGRAM_MAP(main_map)
+	MCFG_CPU_VBLANK_INT("screen", atarigen_video_int_gen)
 
-	MDRV_MACHINE_START(arcadecl)
-	MDRV_MACHINE_RESET(arcadecl)
-	MDRV_NVRAM_HANDLER(atarigen)
+	MCFG_MACHINE_START(arcadecl)
+	MCFG_MACHINE_RESET(arcadecl)
+	MCFG_NVRAM_ADD_1FILL("eeprom")
 
 	/* video hardware */
-	MDRV_VIDEO_ATTRIBUTES(VIDEO_UPDATE_BEFORE_VBLANK)
-	MDRV_GFXDECODE(arcadecl)
-	MDRV_PALETTE_LENGTH(512)
+	MCFG_VIDEO_ATTRIBUTES(VIDEO_UPDATE_BEFORE_VBLANK)
+	MCFG_GFXDECODE(arcadecl)
+	MCFG_PALETTE_LENGTH(512)
 
-	MDRV_SCREEN_ADD("screen", RASTER)
-	MDRV_SCREEN_FORMAT(BITMAP_FORMAT_INDEXED16)
+	MCFG_SCREEN_ADD("screen", RASTER)
+	MCFG_SCREEN_FORMAT(BITMAP_FORMAT_INDEXED16)
 	/* note: these parameters are from published specs, not derived */
 	/* the board uses an SOS-2 chip to generate video signals */
-	MDRV_SCREEN_RAW_PARAMS(MASTER_CLOCK/2, 456, 0+12, 336+12, 262, 0, 240)
+	MCFG_SCREEN_RAW_PARAMS(MASTER_CLOCK/2, 456, 0+12, 336+12, 262, 0, 240)
+	MCFG_SCREEN_UPDATE(arcadecl)
 
-	MDRV_VIDEO_START(arcadecl)
-	MDRV_VIDEO_UPDATE(arcadecl)
+	MCFG_VIDEO_START(arcadecl)
 
 	/* sound hardware */
-	MDRV_SPEAKER_STANDARD_MONO("mono")
+	MCFG_SPEAKER_STANDARD_MONO("mono")
 
-	MDRV_OKIM6295_ADD("oki", MASTER_CLOCK/4/3, OKIM6295_PIN7_LOW)
-	MDRV_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
-MACHINE_DRIVER_END
+	MCFG_OKIM6295_ADD("oki", MASTER_CLOCK/4/3, OKIM6295_PIN7_LOW)
+	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
+MACHINE_CONFIG_END
 
 
 
@@ -399,7 +399,7 @@ ROM_END
 
 static DRIVER_INIT( sparkz )
 {
-	memset(memory_region(machine, "gfx1"), 0, memory_region_length(machine, "gfx1"));
+	memset(machine.region("gfx1")->base(), 0, machine.region("gfx1")->bytes());
 }
 
 

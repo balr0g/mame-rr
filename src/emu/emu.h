@@ -51,7 +51,9 @@
 
 // core emulator headers -- must be first
 #include "emucore.h"
+#include "emutempl.h"
 #include "eminline.h"
+#include "profiler.h"
 
 // commonly-referenecd utilities imported from lib/util
 #include "chd.h"
@@ -60,31 +62,45 @@
 
 // emulator-specific utilities
 #include "attotime.h"
+#include "hash.h"
 #include "fileio.h" // remove me once NVRAM is implemented as device
-#include "tokenize.h"
+#include "delegate.h"
+#include "cothread.h"
 
 // memory and address spaces
 #include "memory.h"
+#include "addrmap.h"
+
+// machine-wide utilities
+#include "romload.h"
+#include "save.h"
+
+// define machine_config_constructor here due to circular dependency
+// between devices and the machine config
+class machine_config;
+typedef device_t * (*machine_config_constructor)(machine_config &config, device_t *owner);
+
+// I/O
+#include "input.h"
+#include "ioport.h"
+#include "output.h"
 
 // devices and callbacks
-#include "devintrf.h"
-#include "devcb.h"
+#include "device.h"
 #include "distate.h"
 #include "dimemory.h"
 #include "diexec.h"
 #include "opresolv.h"
 #include "diimage.h"
+#include "diserial.h"
+#include "dislot.h"
 #include "disound.h"
 #include "dinvram.h"
+#include "dirtc.h"
 #include "didisasm.h"
-#include "timer.h"
 #include "schedule.h"
-
-// I/O
-#include "input.h"
-#include "inputseq.h"
-#include "inptport.h"
-#include "output.h"
+#include "timer.h"
+#include "dinetwork.h"
 
 // timers, CPU and scheduling
 #include "devcpu.h"
@@ -94,18 +110,11 @@
 #include "mconfig.h"
 #include "driver.h"
 
-// machine-wide utilities
-#include "romload.h"
-#include "state.h"
-
 // image-related
 #include "softlist.h"
 #include "image.h"
 
 // the running machine
-#ifdef MESS
-#include "mess.h"
-#endif /* MESS */
 #include "machine.h"
 #include "mame.h"
 
@@ -113,13 +122,15 @@
 #include "drawgfx.h"
 #include "tilemap.h"
 #include "emupal.h"
+#include "screen.h"
 #include "video.h"
 
 // sound-related
-#include "streams.h"
 #include "sound.h"
+#include "speaker.h"
 
 // generic helpers
+#include "devcb.h"
 #include "drivers/xtal.h"
 #include "audio/generic.h"
 #include "machine/generic.h"

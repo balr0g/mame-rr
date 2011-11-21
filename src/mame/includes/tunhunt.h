@@ -1,15 +1,14 @@
-class tunhunt_state
+class tunhunt_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, tunhunt_state(machine)); }
+	tunhunt_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
-	tunhunt_state(running_machine &machine) { }
-
-	UINT8 control;
-	UINT8 *workram;
-	UINT8 *spriteram;
-	UINT8 *videoram;
-	tilemap_t *fg_tilemap;
+	UINT8 m_control;
+	UINT8 *m_workram;
+	UINT8 *m_spriteram;
+	UINT8 *m_videoram;
+	tilemap_t *m_fg_tilemap;
 };
 
 
@@ -19,4 +18,4 @@ WRITE8_HANDLER( tunhunt_videoram_w );
 
 PALETTE_INIT( tunhunt );
 VIDEO_START( tunhunt );
-VIDEO_UPDATE( tunhunt );
+SCREEN_UPDATE( tunhunt );

@@ -4,40 +4,27 @@
 
 *************************************************************************/
 
-class madmotor_state
+class madmotor_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, madmotor_state(machine)); }
-
-	madmotor_state(running_machine &machine) { }
+	madmotor_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT16 *        pf1_rowscroll;
-	UINT16 *        pf1_data;
-	UINT16 *        pf2_data;
-	UINT16 *        pf3_data;
-	UINT16 *        pf1_control;
-	UINT16 *        pf2_control;
-	UINT16 *        pf3_control;
-	UINT16 *        spriteram;
-//  UINT16 *        paletteram;     // this currently uses generic palette handlers
-	size_t          spriteram_size;
+	UINT16 *        m_spriteram;
+//  UINT16 *        m_paletteram;     // this currently uses generic palette handlers
+	size_t          m_spriteram_size;
 
 	/* video-related */
-	tilemap_t       *pf1_tilemap, *pf2_tilemap, *pf3_tilemap, *pf3a_tilemap;
-	int             flipscreen;
+	int             m_flipscreen;
 
 	/* devices */
-	running_device *maincpu;
-	running_device *audiocpu;
+	device_t *m_maincpu;
+	device_t *m_audiocpu;
 };
 
 
 /*----------- defined in video/madmotor.c -----------*/
 
-WRITE16_HANDLER( madmotor_pf1_data_w );
-WRITE16_HANDLER( madmotor_pf2_data_w );
-WRITE16_HANDLER( madmotor_pf3_data_w );
-
 VIDEO_START( madmotor );
-VIDEO_UPDATE( madmotor );
+SCREEN_UPDATE( madmotor );

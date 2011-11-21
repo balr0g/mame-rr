@@ -72,6 +72,18 @@ $(SOUNDOBJ)/discrete.o:	$(SOUNDSRC)/discrete.c \
 						$(SOUNDSRC)/disc_wav.c
 
 
+#-------------------------------------------------
+# Apple custom sound chips
+#-------------------------------------------------
+
+ifneq ($(filter ASC,$(SOUNDS)),)
+SOUNDOBJS += $(SOUNDOBJ)/asc.o
+endif
+
+ifneq ($(filter AWACS,$(SOUNDS)),)
+SOUNDOBJS += $(SOUNDOBJ)/awacs.o
+endif
+
 
 #-------------------------------------------------
 # Atari custom sound chips
@@ -272,6 +284,26 @@ endif
 
 
 #-------------------------------------------------
+# LMC1992 mixer chip
+#-------------------------------------------------
+
+ifneq ($(filter LMC1992,$(SOUNDS)),)
+SOUNDOBJS += $(SOUNDOBJ)/lmc1992.o
+endif
+
+
+
+#-------------------------------------------------
+# MAS 3507D MPEG 1/2 Layer 2/3 Audio Decoder
+#-------------------------------------------------
+
+ifneq ($(filter MAS3507D,$(SOUNDS)),)
+SOUNDOBJS += $(SOUNDOBJ)/mas3507d.o
+endif
+
+
+
+#-------------------------------------------------
 # MOS 6560VIC
 #-------------------------------------------------
 
@@ -337,6 +369,10 @@ endif
 # OKI ADPCM sample players
 #-------------------------------------------------
 
+ifneq ($(filter OKIM6258 OKIM9810,$(SOUNDS)),)
+SOUNDOBJS += $(SOUNDOBJ)/okiadpcm.o
+endif
+
 ifneq ($(filter MSM5205,$(SOUNDS)),)
 SOUNDOBJS += $(SOUNDOBJ)/msm5205.o
 endif
@@ -355,6 +391,10 @@ endif
 
 ifneq ($(filter OKIM6258,$(SOUNDS)),)
 SOUNDOBJS += $(SOUNDOBJ)/okim6258.o
+endif
+
+ifneq ($(filter OKIM9810,$(SOUNDS)),)
+SOUNDOBJS += $(SOUNDOBJ)/okim9810.o
 endif
 
 
@@ -392,6 +432,13 @@ SOUNDOBJS += $(SOUNDOBJ)/rf5c400.o
 endif
 
 
+#-------------------------------------------------
+# S2636 wave generator
+#-------------------------------------------------
+
+ifneq ($(filter S2636,$(SOUNDS)),)
+SOUNDOBJS += $(SOUNDOBJ)/s2636.o
+endif
 
 #-------------------------------------------------
 # Sega custom sound chips
@@ -473,10 +520,9 @@ endif
 # Sony custom sound chips
 #-------------------------------------------------
 
-ifneq ($(filter PSXSPU,$(SOUNDS)),)
-SOUNDOBJS += $(SOUNDOBJ)/psx.o
+ifneq ($(filter SPU,$(SOUNDS)),)
+SOUNDOBJS += $(SOUNDOBJ)/spu.o $(SOUNDOBJ)/spu_tables.o $(SOUNDOBJ)/spureverb.o
 endif
-
 
 
 #-------------------------------------------------
@@ -662,6 +708,14 @@ endif
 
 ifneq ($(filter YMZ280B,$(SOUNDS)),)
 SOUNDOBJS += $(SOUNDOBJ)/ymz280b.o
+endif
+
+#-------------------------------------------------
+# Yamaha YMZ770 AMM
+#-------------------------------------------------
+
+ifneq ($(filter YMZ770,$(SOUNDS)),)
+SOUNDOBJS += $(SOUNDOBJ)/ymz770.o
 endif
 
 #-------------------------------------------------

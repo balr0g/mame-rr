@@ -4,30 +4,29 @@
 
 *************************************************************************/
 
-class amspdwy_state
+class amspdwy_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, amspdwy_state(machine)); }
-
-	amspdwy_state(running_machine &machine) { }
+	amspdwy_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *    videoram;
-	UINT8 *    spriteram;
-	UINT8 *    colorram;
+	UINT8 *    m_videoram;
+	UINT8 *    m_spriteram;
+	UINT8 *    m_colorram;
 //  UINT8 *    paletteram;  // currently this uses generic palette handling
-	size_t     spriteram_size;
+	size_t     m_spriteram_size;
 
 	/* video-related */
-	tilemap_t    *bg_tilemap;
-	int        flipscreen;
+	tilemap_t    *m_bg_tilemap;
+	int        m_flipscreen;
 
 	/* misc */
-	UINT8      wheel_old[2];
-	UINT8      wheel_return[2];
+	UINT8      m_wheel_old[2];
+	UINT8      m_wheel_return[2];
 
 	/* devices */
-	running_device *audiocpu;
+	device_t *m_audiocpu;
 };
 
 
@@ -39,4 +38,4 @@ WRITE8_HANDLER( amspdwy_paletteram_w );
 WRITE8_HANDLER( amspdwy_flipscreen_w );
 
 VIDEO_START( amspdwy );
-VIDEO_UPDATE( amspdwy );
+SCREEN_UPDATE( amspdwy );

@@ -87,26 +87,33 @@ TODO :  This is a partially working driver.  Most of the memory maps for
 #include "video/tlc34076.h"
 #include "video/mc6845.h"
 #include "sound/dac.h"
+#include "machine/nvram.h"
 
 
-static UINT16* m68k_framebuffer[2];
-static UINT16* i860_framebuffer[2][2];
-static UINT16* framebuffer_ctrl;
-
-static UINT16* vid_0_shared_RAM;
-static UINT16* vid_1_shared_RAM;
-
-static int crtc_select;
-
-
-static VIDEO_UPDATE( vcombat )
+class vcombat_state : public driver_device
 {
-	int y;
-	const rgb_t *const pens = tlc34076_get_pens();
-	running_device *aux = screen->machine->device("aux");
+public:
+	vcombat_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
-	UINT16 *m68k_buf = m68k_framebuffer[(*framebuffer_ctrl & 0x20) ? 1 : 0];
-	UINT16 *i860_buf = i860_framebuffer[(screen == aux) ? 1 : 0][0];
+	UINT16* m_m68k_framebuffer[2];
+	UINT16* m_i860_framebuffer[2][2];
+	UINT16* m_framebuffer_ctrl;
+	UINT16* m_vid_0_shared_RAM;
+	UINT16* m_vid_1_shared_RAM;
+	int m_crtc_select;
+};
+
+
+static SCREEN_UPDATE( vcombat )
+{
+	vcombat_state *state = screen->machine().driver_data<vcombat_state>();
+	int y;
+	const rgb_t *const pens = tlc34076_get_pens(screen->machine().device("tlc34076"));
+	device_t *aux = screen->machine().device("aux");
+
+	UINT16 *m68k_buf = state->m_m68k_framebuffer[(*state->m_framebuffer_ctrl & 0x20) ? 1 : 0];
+	UINT16 *i860_buf = state->m_i860_framebuffer[(screen == aux) ? 1 : 0][0];
 
 	/* TODO: It looks like the leftmost chunk of the ground should really be on the right side? */
 	/*       But the i860 draws the background correctly, so it may be an original game issue. */
@@ -151,11 +158,12 @@ static VIDEO_UPDATE( vcombat )
 
 static WRITE16_HANDLER( main_video_write )
 {
-	int fb = (*framebuffer_ctrl & 0x20) ? 0 : 1;
-	UINT16 old_data = m68k_framebuffer[fb][offset];
+	vcombat_state *state = space->machine().driver_data<vcombat_state>();
+	int fb = (*state->m_framebuffer_ctrl & 0x20) ? 0 : 1;
+	UINT16 old_data = state->m_m68k_framebuffer[fb][offset];
 
 	/* Transparency mode? */
-	if (*framebuffer_ctrl & 0x40)
+	if (*state->m_framebuffer_ctrl & 0x40)
 	{
 		if (data == 0x0000)
 			return;
@@ -165,30 +173,30 @@ static WRITE16_HANDLER( main_video_write )
 		if ((data & 0xff00) == 0)
 			data = (data & 0x00ff) | (old_data & 0xff00);
 
-		COMBINE_DATA(&m68k_framebuffer[fb][offset]);
+		COMBINE_DATA(&state->m_m68k_framebuffer[fb][offset]);
 	}
 	else
 	{
-		COMBINE_DATA(&m68k_framebuffer[fb][offset]);
+		COMBINE_DATA(&state->m_m68k_framebuffer[fb][offset]);
 	}
 }
 
 static READ16_HANDLER( control_1_r )
 {
-	return (input_port_read(space->machine, "IN0") << 8);
+	return (input_port_read(space->machine(), "IN0") << 8);
 }
 
 static READ16_HANDLER( control_2_r )
 {
-	return (input_port_read(space->machine, "IN1") << 8);
+	return (input_port_read(space->machine(), "IN1") << 8);
 }
 
 static READ16_HANDLER( control_3_r )
 {
-	return (input_port_read(space->machine, "IN2") << 8);
+	return (input_port_read(space->machine(), "IN2") << 8);
 }
 
-static void wiggle_i860_common(running_device *device, UINT16 data)
+static void wiggle_i860_common(device_t *device, UINT16 data)
 {
 	int bus_hold = (data & 0x03) == 0x03;
 	int reset = data & 0x10;
@@ -217,34 +225,35 @@ static void wiggle_i860_common(running_device *device, UINT16 data)
 
 static WRITE16_HANDLER( wiggle_i860p0_pins_w )
 {
-	wiggle_i860_common(space->machine->device("vid_0"), data);
+	wiggle_i860_common(space->machine().device("vid_0"), data);
 }
 
 static WRITE16_HANDLER( wiggle_i860p1_pins_w )
 {
-	wiggle_i860_common(space->machine->device("vid_1"), data);
+	wiggle_i860_common(space->machine().device("vid_1"), data);
 }
 
 static READ16_HANDLER( main_irqiack_r )
 {
 	//fprintf(stderr, "M0: irq iack\n");
-	cpu_set_input_line(space->machine->device("maincpu"), M68K_IRQ_1, CLEAR_LINE);
-	//cpu_set_input_line(space->machine->device("maincpu"), INPUT_LINE_RESET, CLEAR_LINE);
+	device_set_input_line(space->machine().device("maincpu"), M68K_IRQ_1, CLEAR_LINE);
+	//device_set_input_line(space->machine().device("maincpu"), INPUT_LINE_RESET, CLEAR_LINE);
 	return 0;
 }
 
 static READ16_HANDLER( sound_resetmain_r )
 {
 	//fprintf(stderr, "M1: reset line to M0\n");
-	//cpu_set_input_line(space->machine->device("maincpu"), INPUT_LINE_RESET, PULSE_LINE);
+	//device_set_input_line(space->machine().device("maincpu"), INPUT_LINE_RESET, PULSE_LINE);
 	return 0;
 }
 
 static WRITE64_HANDLER( v0_fb_w )
 {
+	vcombat_state *state = space->machine().driver_data<vcombat_state>();
 	/* The frame buffer seems to sit on a 32-bit data bus, while the
        i860 uses a 64-bit data bus.  Adjust accordingly.  */
-	char *p = (char *)(i860_framebuffer[0][0]);
+	char *p = (char *)(state->m_i860_framebuffer[0][0]);
 	int m = mem_mask;
 	int o = (offset << 2);
 	if (m & 0xff000000) {
@@ -265,9 +274,10 @@ static WRITE64_HANDLER( v0_fb_w )
    framebuffer.  */
 static WRITE64_HANDLER( v1_fb_w )
 {
+	vcombat_state *state = space->machine().driver_data<vcombat_state>();
 	/* The frame buffer seems to sit on a 32-bit data bus, while the
        i860 uses a 64-bit data bus.  Adjust accordingly.  */
-	char *p = (char *)(i860_framebuffer[1][0]);
+	char *p = (char *)(state->m_i860_framebuffer[1][0]);
 	int m = mem_mask;
 	int o = (offset << 2);
 	if (m & 0xff000000) {
@@ -286,17 +296,18 @@ static WRITE64_HANDLER( v1_fb_w )
 
 static WRITE16_HANDLER( crtc_w )
 {
-	running_device *crtc = space->machine->device("crtc");
+	vcombat_state *state = space->machine().driver_data<vcombat_state>();
+	mc6845_device *crtc = space->machine().device<mc6845_device>("crtc");
 
 	if (crtc == NULL)
 		return;
 
-	if (crtc_select == 0)
-		mc6845_address_w(crtc, 0, data >> 8);
+	if (state->m_crtc_select == 0)
+		crtc->address_w(*space, 0, data >> 8);
 	else
-		mc6845_register_w(crtc, 0, data >> 8);
+		crtc->register_w(*space, 0, data >> 8);
 
-	crtc_select ^= 1;
+	state->m_crtc_select ^= 1;
 }
 
 static WRITE16_DEVICE_HANDLER( vcombat_dac_w )
@@ -305,17 +316,17 @@ static WRITE16_DEVICE_HANDLER( vcombat_dac_w )
 	dac_signed_data_16_w(device, newval + 0x8000);
 }
 
-static ADDRESS_MAP_START( main_map, ADDRESS_SPACE_PROGRAM, 16 )
+static ADDRESS_MAP_START( main_map, AS_PROGRAM, 16 )
 	AM_RANGE(0x000000, 0x0fffff) AM_ROM
 	AM_RANGE(0x200000, 0x20ffff) AM_RAM
 	AM_RANGE(0x300000, 0x30ffff) AM_WRITE(main_video_write)
 
-	AM_RANGE(0x400000, 0x43ffff) AM_RAM AM_BASE(&vid_0_shared_RAM) AM_SHARE("share2")	/* First i860 shared RAM */
+	AM_RANGE(0x400000, 0x43ffff) AM_RAM AM_BASE_MEMBER(vcombat_state, m_vid_0_shared_RAM) AM_SHARE("share2")	/* First i860 shared RAM */
 	AM_RANGE(0x440000, 0x440003) AM_RAM AM_SHARE("share6")		/* M0->P0 i860 #1 com 1 */
 	AM_RANGE(0x480000, 0x480003) AM_RAM AM_SHARE("share7")		/* M0<-P0 i860 #1 com 2 */
 	AM_RANGE(0x4c0000, 0x4c0003) AM_WRITE(wiggle_i860p0_pins_w)	/* i860 #1 stop/start/reset */
 
-	AM_RANGE(0x500000, 0x53ffff) AM_RAM AM_BASE(&vid_1_shared_RAM) AM_SHARE("share3")	/* Second i860 shared RAM */
+	AM_RANGE(0x500000, 0x53ffff) AM_RAM AM_BASE_MEMBER(vcombat_state, m_vid_1_shared_RAM) AM_SHARE("share3")	/* Second i860 shared RAM */
 	AM_RANGE(0x540000, 0x540003) AM_RAM AM_SHARE("share8")		/* M0->P1 i860 #2 com 1 */
 	AM_RANGE(0x580000, 0x580003) AM_RAM AM_SHARE("share9")		/* M0<-P1 i860 #2 com 2 */
 	AM_RANGE(0x5c0000, 0x5c0003) AM_WRITE(wiggle_i860p1_pins_w)	/* i860 #2 stop/start/reset */
@@ -326,8 +337,8 @@ static ADDRESS_MAP_START( main_map, ADDRESS_SPACE_PROGRAM, 16 )
 	AM_RANGE(0x60001c, 0x60001d) AM_NOP
 
 	AM_RANGE(0x60000c, 0x60000d) AM_WRITE(crtc_w)
-	AM_RANGE(0x600010, 0x600011) AM_RAM AM_BASE(&framebuffer_ctrl)
-	AM_RANGE(0x700000, 0x7007ff) AM_RAM AM_BASE_SIZE_GENERIC(nvram)
+	AM_RANGE(0x600010, 0x600011) AM_RAM AM_BASE_MEMBER(vcombat_state, m_framebuffer_ctrl)
+	AM_RANGE(0x700000, 0x7007ff) AM_RAM AM_SHARE("nvram")
 	AM_RANGE(0x701000, 0x701001) AM_READ(main_irqiack_r)
 	AM_RANGE(0x702000, 0x702001) AM_READ(control_3_r)
 	AM_RANGE(0x705000, 0x705001) AM_RAM AM_SHARE("share4")		/* M1->M0 */
@@ -335,12 +346,12 @@ static ADDRESS_MAP_START( main_map, ADDRESS_SPACE_PROGRAM, 16 )
 	//AM_RANGE(0x703000, 0x703001)      /* Headset rotation axis? */
 	//AM_RANGE(0x704000, 0x704001)      /* Headset rotation axis? */
 
-	AM_RANGE(0x706000, 0x70601f) AM_READWRITE(tlc34076_lsb_r, tlc34076_lsb_w)
+	AM_RANGE(0x706000, 0x70601f) AM_DEVREADWRITE8("tlc34076", tlc34076_r, tlc34076_w, 0x00ff)
 ADDRESS_MAP_END
 
 
 /* The first i860 - middle board */
-static ADDRESS_MAP_START( vid_0_map, ADDRESS_SPACE_PROGRAM, 64 )
+static ADDRESS_MAP_START( vid_0_map, AS_PROGRAM, 64 )
 	AM_RANGE(0x00000000, 0x0001ffff) AM_RAM_WRITE(v0_fb_w)		/* Shared framebuffer - half of the bits lost to 32-bit bus */
 	AM_RANGE(0x20000000, 0x20000007) AM_RAM AM_SHARE("share6")		/* M0<-P0 com 1 (0x440000 in 68k-land) */
 	AM_RANGE(0x40000000, 0x401fffff) AM_ROM AM_REGION("gfx", 0)
@@ -351,7 +362,7 @@ ADDRESS_MAP_END
 
 
 /* The second i860 - top board */
-static ADDRESS_MAP_START( vid_1_map, ADDRESS_SPACE_PROGRAM, 64 )
+static ADDRESS_MAP_START( vid_1_map, AS_PROGRAM, 64 )
 	AM_RANGE(0x00000000, 0x0001ffff) AM_RAM_WRITE(v1_fb_w)		/* Half of the bits lost to 32-bit bus */
 	AM_RANGE(0x20000000, 0x20000007) AM_RAM AM_SHARE("share8")		/* M0->P1 com 1 (0x540000 in 68k-land) */
 	AM_RANGE(0x40000000, 0x401fffff) AM_ROM AM_REGION("gfx", 0)
@@ -362,7 +373,7 @@ ADDRESS_MAP_END
 
 
 /* Sound CPU */
-static ADDRESS_MAP_START( sound_map, ADDRESS_SPACE_PROGRAM, 16 )
+static ADDRESS_MAP_START( sound_map, AS_PROGRAM, 16 )
 	AM_RANGE(0x000000, 0x03ffff) AM_ROM
 	AM_RANGE(0x080000, 0x08ffff) AM_RAM
 	AM_RANGE(0x0c0000, 0x0c0001) AM_DEVWRITE("dac", vcombat_dac_w)
@@ -375,41 +386,39 @@ ADDRESS_MAP_END
 
 static MACHINE_RESET( vcombat )
 {
-	/* Setup the Bt476 VGA RAMDAC palette chip */
-	tlc34076_reset(6);
+	vcombat_state *state = machine.driver_data<vcombat_state>();
+	i860_set_pin(machine.device("vid_0"), DEC_PIN_BUS_HOLD, 1);
+	i860_set_pin(machine.device("vid_1"), DEC_PIN_BUS_HOLD, 1);
 
-	i860_set_pin(machine->device("vid_0"), DEC_PIN_BUS_HOLD, 1);
-	i860_set_pin(machine->device("vid_1"), DEC_PIN_BUS_HOLD, 1);
-
-	crtc_select = 0;
+	state->m_crtc_select = 0;
 }
 
 static MACHINE_RESET( shadfgtr )
 {
-	/* Setup the Bt476 VGA RAMDAC palette chip */
-	tlc34076_reset(6);
+	vcombat_state *state = machine.driver_data<vcombat_state>();
+	i860_set_pin(machine.device("vid_0"), DEC_PIN_BUS_HOLD, 1);
 
-	i860_set_pin(machine->device("vid_0"), DEC_PIN_BUS_HOLD, 1);
-
-	crtc_select = 0;
+	state->m_crtc_select = 0;
 }
 
 
-static DIRECT_UPDATE_HANDLER( vid_0_direct_handler )
+DIRECT_UPDATE_HANDLER( vcombat_vid_0_direct_handler )
 {
+	vcombat_state *state = machine.driver_data<vcombat_state>();
 	if (address >= 0xfffc0000 && address <= 0xffffffff)
 	{
-		direct->raw = direct->decrypted = ((UINT8*)vid_0_shared_RAM) - 0xfffc0000;
+		direct.explicit_configure(0xfffc0000, 0xffffffff, 0x3ffff, state->m_vid_0_shared_RAM);
 		return ~0;
 	}
 	return address;
 }
 
-static DIRECT_UPDATE_HANDLER( vid_1_direct_handler )
+DIRECT_UPDATE_HANDLER( vcombat_vid_1_direct_handler )
 {
+	vcombat_state *state = machine.driver_data<vcombat_state>();
 	if (address >= 0xfffc0000 && address <= 0xffffffff)
 	{
-		direct->raw = direct->decrypted = ((UINT8*)vid_1_shared_RAM) - 0xfffc0000;
+		direct.explicit_configure(0xfffc0000, 0xffffffff, 0x3ffff, state->m_vid_1_shared_RAM);
 		return ~0;
 	}
 	return address;
@@ -418,23 +427,27 @@ static DIRECT_UPDATE_HANDLER( vid_1_direct_handler )
 
 static DRIVER_INIT( vcombat )
 {
-	UINT8 *ROM = memory_region(machine, "maincpu");
+	vcombat_state *state = machine.driver_data<vcombat_state>();
+	UINT8 *ROM = machine.region("maincpu")->base();
 
 	/* The two i860s execute out of RAM */
-	memory_set_direct_update_handler(cputag_get_address_space(machine, "vid_0", ADDRESS_SPACE_PROGRAM), vid_0_direct_handler);
-	memory_set_direct_update_handler(cputag_get_address_space(machine, "vid_1", ADDRESS_SPACE_PROGRAM), vid_1_direct_handler);
+	address_space *space = machine.device<i860_device>("vid_0")->space(AS_PROGRAM);
+	space->set_direct_update_handler(direct_update_delegate(FUNC(vcombat_vid_0_direct_handler), &machine));
+
+	space = machine.device<i860_device>("vid_1")->space(AS_PROGRAM);
+	space->set_direct_update_handler(direct_update_delegate(FUNC(vcombat_vid_1_direct_handler), &machine));
 
 	/* Allocate the 68000 framebuffers */
-	m68k_framebuffer[0] = auto_alloc_array(machine, UINT16, 0x8000);
-	m68k_framebuffer[1] = auto_alloc_array(machine, UINT16, 0x8000);
+	state->m_m68k_framebuffer[0] = auto_alloc_array(machine, UINT16, 0x8000);
+	state->m_m68k_framebuffer[1] = auto_alloc_array(machine, UINT16, 0x8000);
 
 	/* First i860 */
-	i860_framebuffer[0][0] = auto_alloc_array(machine, UINT16, 0x8000);
-	i860_framebuffer[0][1] = auto_alloc_array(machine, UINT16, 0x8000);
+	state->m_i860_framebuffer[0][0] = auto_alloc_array(machine, UINT16, 0x8000);
+	state->m_i860_framebuffer[0][1] = auto_alloc_array(machine, UINT16, 0x8000);
 
 	/* Second i860 */
-	i860_framebuffer[1][0] = auto_alloc_array(machine, UINT16, 0x8000);
-	i860_framebuffer[1][1] = auto_alloc_array(machine, UINT16, 0x8000);
+	state->m_i860_framebuffer[1][0] = auto_alloc_array(machine, UINT16, 0x8000);
+	state->m_i860_framebuffer[1][1] = auto_alloc_array(machine, UINT16, 0x8000);
 
 	/* pc==4016 : jump 4038 ... There's something strange about how it waits at 402e (interrupts all masked out)
        I think what is happening here is that M0 snags the first time
@@ -454,18 +467,20 @@ static DRIVER_INIT( vcombat )
 
 static DRIVER_INIT( shadfgtr )
 {
+	vcombat_state *state = machine.driver_data<vcombat_state>();
 	/* Allocate th 68000 frame buffers */
-	m68k_framebuffer[0] = auto_alloc_array(machine, UINT16, 0x8000);
-	m68k_framebuffer[1] = auto_alloc_array(machine, UINT16, 0x8000);
+	state->m_m68k_framebuffer[0] = auto_alloc_array(machine, UINT16, 0x8000);
+	state->m_m68k_framebuffer[1] = auto_alloc_array(machine, UINT16, 0x8000);
 
 	/* Only one i860 */
-	i860_framebuffer[0][0] = auto_alloc_array(machine, UINT16, 0x8000);
-	i860_framebuffer[0][1] = auto_alloc_array(machine, UINT16, 0x8000);
-	i860_framebuffer[1][0] = NULL;
-	i860_framebuffer[1][1] = NULL;
+	state->m_i860_framebuffer[0][0] = auto_alloc_array(machine, UINT16, 0x8000);
+	state->m_i860_framebuffer[0][1] = auto_alloc_array(machine, UINT16, 0x8000);
+	state->m_i860_framebuffer[1][0] = NULL;
+	state->m_i860_framebuffer[1][1] = NULL;
 
 	/* The i860 executes out of RAM */
-	memory_set_direct_update_handler(cputag_get_address_space(machine, "vid_0", ADDRESS_SPACE_PROGRAM), vid_0_direct_handler);
+	address_space *space = machine.device<i860_device>("vid_0")->space(AS_PROGRAM);
+	space->set_direct_update_handler(direct_update_delegate(FUNC(vcombat_vid_0_direct_handler), &machine));
 }
 
 
@@ -530,7 +545,7 @@ INPUT_PORTS_END
 static WRITE_LINE_DEVICE_HANDLER(sound_update)
 {
 	/* Seems reasonable */
-	cpu_set_input_line(device->machine->device("soundcpu"), M68K_IRQ_1, state ? ASSERT_LINE : CLEAR_LINE);
+	device_set_input_line(device->machine().device("soundcpu"), M68K_IRQ_1, state ? ASSERT_LINE : CLEAR_LINE);
 }
 
 static const mc6845_interface mc6845_intf =
@@ -548,83 +563,86 @@ static const mc6845_interface mc6845_intf =
 };
 
 
-static MACHINE_DRIVER_START( vcombat )
-	MDRV_CPU_ADD("maincpu", M68000, XTAL_12MHz)
-	MDRV_CPU_PROGRAM_MAP(main_map)
-	MDRV_CPU_VBLANK_INT("screen", irq1_line_assert)
+static MACHINE_CONFIG_START( vcombat, vcombat_state )
+	MCFG_CPU_ADD("maincpu", M68000, XTAL_12MHz)
+	MCFG_CPU_PROGRAM_MAP(main_map)
+	MCFG_CPU_VBLANK_INT("screen", irq1_line_assert)
 
 	/* The middle board i860 */
-	MDRV_CPU_ADD("vid_0", I860, XTAL_20MHz)
-	MDRV_CPU_PROGRAM_MAP(vid_0_map)
+	MCFG_CPU_ADD("vid_0", I860, XTAL_20MHz)
+	MCFG_CPU_PROGRAM_MAP(vid_0_map)
 
 	/* The top board i860 */
-	MDRV_CPU_ADD("vid_1", I860, XTAL_20MHz)
-	MDRV_CPU_PROGRAM_MAP(vid_1_map)
+	MCFG_CPU_ADD("vid_1", I860, XTAL_20MHz)
+	MCFG_CPU_PROGRAM_MAP(vid_1_map)
 
 	/* Sound CPU */
-	MDRV_CPU_ADD("soundcpu", M68000, XTAL_12MHz)
-	MDRV_CPU_PROGRAM_MAP(sound_map)
-	MDRV_CPU_PERIODIC_INT(irq1_line_hold, 15000)	/* Remove this if MC6845 is enabled */
+	MCFG_CPU_ADD("soundcpu", M68000, XTAL_12MHz)
+	MCFG_CPU_PROGRAM_MAP(sound_map)
+	MCFG_CPU_PERIODIC_INT(irq1_line_hold, 15000)	/* Remove this if MC6845 is enabled */
 
-	MDRV_NVRAM_HANDLER(generic_0fill)
-	MDRV_MACHINE_RESET(vcombat)
+	MCFG_NVRAM_ADD_0FILL("nvram")
+	MCFG_MACHINE_RESET(vcombat)
 
 /* Temporary hack for experimenting with timing. */
 #if 0
-	//MDRV_QUANTUM_TIME(HZ(1200))
-	MDRV_QUANTUM_PERFECT_CPU("maincpu")
+	//MCFG_QUANTUM_TIME(attotime::from_hz(1200))
+	MCFG_QUANTUM_PERFECT_CPU("maincpu")
 #endif
 
+	MCFG_TLC34076_ADD("tlc34076", TLC34076_6_BIT)
+
 	/* Disabled for now as it can't handle multiple screens */
-//  MDRV_MC6845_ADD("crtc", MC6845, 6000000 / 16, mc6845_intf)
-	MDRV_DEFAULT_LAYOUT(layout_dualhsxs)
+//  MCFG_MC6845_ADD("crtc", MC6845, 6000000 / 16, mc6845_intf)
+	MCFG_DEFAULT_LAYOUT(layout_dualhsxs)
 
-	MDRV_SCREEN_ADD("screen", RASTER)
-	MDRV_SCREEN_FORMAT(BITMAP_FORMAT_RGB32)
-	MDRV_SCREEN_RAW_PARAMS(XTAL_12MHz / 2, 400, 0, 256, 291, 0, 208)
+	MCFG_SCREEN_ADD("screen", RASTER)
+	MCFG_SCREEN_FORMAT(BITMAP_FORMAT_RGB32)
+	MCFG_SCREEN_RAW_PARAMS(XTAL_12MHz / 2, 400, 0, 256, 291, 0, 208)
+	MCFG_SCREEN_UPDATE(vcombat)
 
-	MDRV_SCREEN_ADD("aux", RASTER)
-	MDRV_SCREEN_FORMAT(BITMAP_FORMAT_RGB32)
-	MDRV_SCREEN_RAW_PARAMS(XTAL_12MHz / 2, 400, 0, 256, 291, 0, 208)
+	MCFG_SCREEN_ADD("aux", RASTER)
+	MCFG_SCREEN_FORMAT(BITMAP_FORMAT_RGB32)
+	MCFG_SCREEN_RAW_PARAMS(XTAL_12MHz / 2, 400, 0, 256, 291, 0, 208)
+	MCFG_SCREEN_UPDATE(vcombat)
 
-	MDRV_VIDEO_UPDATE(vcombat)
+	MCFG_SPEAKER_STANDARD_MONO("mono")
 
-	MDRV_SPEAKER_STANDARD_MONO("mono")
-
-	MDRV_SOUND_ADD("dac", DAC, 0)
-	MDRV_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.00)
-MACHINE_DRIVER_END
+	MCFG_SOUND_ADD("dac", DAC, 0)
+	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.00)
+MACHINE_CONFIG_END
 
 
-static MACHINE_DRIVER_START( shadfgtr )
-	MDRV_CPU_ADD("maincpu", M68000, XTAL_12MHz)
-	MDRV_CPU_PROGRAM_MAP(main_map)
-	MDRV_CPU_VBLANK_INT("screen", irq1_line_assert)
+static MACHINE_CONFIG_START( shadfgtr, vcombat_state )
+	MCFG_CPU_ADD("maincpu", M68000, XTAL_12MHz)
+	MCFG_CPU_PROGRAM_MAP(main_map)
+	MCFG_CPU_VBLANK_INT("screen", irq1_line_assert)
 
 	/* The middle board i860 */
-	MDRV_CPU_ADD("vid_0", I860, XTAL_20MHz)
-	MDRV_CPU_PROGRAM_MAP(vid_0_map)
+	MCFG_CPU_ADD("vid_0", I860, XTAL_20MHz)
+	MCFG_CPU_PROGRAM_MAP(vid_0_map)
 
 	/* Sound CPU */
-	MDRV_CPU_ADD("soundcpu", M68000, XTAL_12MHz)
-	MDRV_CPU_PROGRAM_MAP(sound_map)
+	MCFG_CPU_ADD("soundcpu", M68000, XTAL_12MHz)
+	MCFG_CPU_PROGRAM_MAP(sound_map)
 
-	MDRV_NVRAM_HANDLER(generic_0fill)
-	MDRV_MACHINE_RESET(shadfgtr)
+	MCFG_NVRAM_ADD_0FILL("nvram")
+	MCFG_MACHINE_RESET(shadfgtr)
 
-	MDRV_MC6845_ADD("crtc", MC6845, XTAL_20MHz / 4 / 16, mc6845_intf)
+	MCFG_TLC34076_ADD("tlc34076", TLC34076_6_BIT)
 
-	MDRV_SCREEN_ADD("screen", RASTER)
-	MDRV_SCREEN_FORMAT(BITMAP_FORMAT_RGB32)
-	MDRV_SCREEN_RAW_PARAMS(XTAL_20MHz / 4, 320, 0, 256, 277, 0, 224)
+	MCFG_MC6845_ADD("crtc", MC6845, XTAL_20MHz / 4 / 16, mc6845_intf)
 
-	MDRV_VIDEO_UPDATE(vcombat)
+	MCFG_SCREEN_ADD("screen", RASTER)
+	MCFG_SCREEN_FORMAT(BITMAP_FORMAT_RGB32)
+	MCFG_SCREEN_RAW_PARAMS(XTAL_20MHz / 4, 320, 0, 256, 277, 0, 224)
+	MCFG_SCREEN_UPDATE(vcombat)
 
-	MDRV_SPEAKER_STANDARD_MONO("mono")
+	MCFG_SPEAKER_STANDARD_MONO("mono")
 
-	MDRV_SOUND_ADD("dac", DAC, 0)
-	MDRV_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.00)
-MACHINE_DRIVER_END
+	MCFG_SOUND_ADD("dac", DAC, 0)
+	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.00)
+MACHINE_CONFIG_END
 
 
 ROM_START( vcombat )

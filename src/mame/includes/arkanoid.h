@@ -10,35 +10,41 @@ enum {
 	PADDLE2
 };
 
-class arkanoid_state
+class arkanoid_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, arkanoid_state(machine)); }
-
-	arkanoid_state(running_machine &machine) { }
+	arkanoid_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *  videoram;
-	UINT8 *  spriteram;
-	size_t   spriteram_size;
-	size_t   videoram_size;
+	UINT8 *  m_videoram;
+	UINT8 *  m_spriteram;
+	size_t   m_spriteram_size;
+	size_t   m_videoram_size;
 
 	/* video-related */
-	tilemap_t  *bg_tilemap;
-	UINT8    gfxbank, palettebank;
+	tilemap_t  *m_bg_tilemap;
+	UINT8    m_gfxbank;
+	UINT8    m_palettebank;
 
 	/* input-related */
-	UINT8    paddle_select;
+	UINT8    m_paddle_select;
 
 	/* misc */
-	int      bootleg_id;
-	UINT8    z80write, fromz80, m68705write, toz80;
-	UINT8    port_a_in, port_a_out, ddr_a;
-	UINT8    port_c_out, ddr_c;
-	UINT8    bootleg_cmd;
+	int      m_bootleg_id;
+	UINT8    m_z80write;
+	UINT8    m_fromz80;
+	UINT8    m_m68705write;
+	UINT8    m_toz80;
+	UINT8    m_port_a_in;
+	UINT8    m_port_a_out;
+	UINT8    m_ddr_a;
+	UINT8    m_port_c_out;
+	UINT8    m_ddr_c;
+	UINT8    m_bootleg_cmd;
 
 	/* devices */
-	running_device *mcu;
+	device_t *m_mcu;
 };
 
 
@@ -52,8 +58,8 @@ extern WRITE8_HANDLER( tetrsark_d008_w );
 extern WRITE8_HANDLER( hexa_d008_w );
 
 extern VIDEO_START( arkanoid );
-extern VIDEO_UPDATE( arkanoid );
-extern VIDEO_UPDATE( hexa );
+extern SCREEN_UPDATE( arkanoid );
+extern SCREEN_UPDATE( hexa );
 
 
 /*----------- defined in machine/arkanoid.c -----------*/

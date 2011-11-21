@@ -1,19 +1,18 @@
-class toypop_state
+class toypop_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, toypop_state(machine)); }
+	toypop_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
-	toypop_state(running_machine &machine) { }
+	UINT8 *m_videoram;
+	UINT8 *m_spriteram;
+	UINT16 *m_bg_image;
+	UINT8 *m_m68000_sharedram;
+	tilemap_t *m_bg_tilemap;
 
-	UINT8 *videoram;
-	UINT8 *spriteram;
-	UINT16 *bg_image;
-	UINT8 *m68000_sharedram;
-	tilemap_t *bg_tilemap;
-
-	int bitmapflip;
-	int palettebank;
-	int interrupt_enable_68k;
+	int m_bitmapflip;
+	int m_palettebank;
+	int m_interrupt_enable_68k;
 };
 
 
@@ -25,5 +24,5 @@ WRITE16_HANDLER( toypop_merged_background_w );
 WRITE8_HANDLER( toypop_palettebank_w );
 WRITE16_HANDLER( toypop_flipscreen_w );
 VIDEO_START( toypop );
-VIDEO_UPDATE( toypop );
+SCREEN_UPDATE( toypop );
 PALETTE_INIT( toypop );

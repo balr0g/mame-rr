@@ -4,29 +4,28 @@
 
 *************************************************************************/
 
-class taitoh_state
+class taitoh_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, taitoh_state(machine)); }
-
-	taitoh_state(running_machine &machine) { }
+	taitoh_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT16 *    m68000_mainram;
+	UINT16 *    m_m68000_mainram;
 //  UINT16 *    paletteram;    // currently this uses generic palette handling
 
 	/* misc */
-	INT32       banknum;
+	INT32       m_banknum;
 
 	/* devices */
-	running_device *maincpu;
-	running_device *audiocpu;
-	running_device *tc0080vco;
-	running_device *tc0220ioc;
+	device_t *m_maincpu;
+	device_t *m_audiocpu;
+	device_t *m_tc0080vco;
+	device_t *m_tc0220ioc;
 };
 
 /*----------- defined in video/taito_h.c -----------*/
 
-VIDEO_UPDATE( syvalion );
-VIDEO_UPDATE( recordbr );
-VIDEO_UPDATE( dleague );
+SCREEN_UPDATE( syvalion );
+SCREEN_UPDATE( recordbr );
+SCREEN_UPDATE( dleague );

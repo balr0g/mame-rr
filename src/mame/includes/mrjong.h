@@ -4,19 +4,18 @@
 
 *************************************************************************/
 
-class mrjong_state
+class mrjong_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, mrjong_state(machine)); }
-
-	mrjong_state(running_machine &machine) { }
+	mrjong_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *    videoram;
-	UINT8 *    colorram;
+	UINT8 *    m_videoram;
+	UINT8 *    m_colorram;
 
 	/* video-related */
-	tilemap_t *bg_tilemap;
+	tilemap_t *m_bg_tilemap;
 };
 
 
@@ -28,4 +27,4 @@ WRITE8_HANDLER( mrjong_flipscreen_w );
 
 PALETTE_INIT( mrjong );
 VIDEO_START( mrjong );
-VIDEO_UPDATE( mrjong );
+SCREEN_UPDATE( mrjong );

@@ -8,31 +8,30 @@
 #define CPUTAG_MCU "mcu"
 
 
-class champbas_state
+class champbas_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, champbas_state(machine)); }
-
-	champbas_state(running_machine &machine) { }
+	champbas_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *        bg_videoram;
-	UINT8 *        spriteram;
-	UINT8 *        spriteram_2;
-	size_t         spriteram_size;
+	UINT8 *        m_bg_videoram;
+	UINT8 *        m_spriteram;
+	UINT8 *        m_spriteram_2;
+	size_t         m_spriteram_size;
 
 	/* video-related */
-	tilemap_t        *bg_tilemap;
-	UINT8          gfx_bank;
-	UINT8          palette_bank;
+	tilemap_t        *m_bg_tilemap;
+	UINT8          m_gfx_bank;
+	UINT8          m_palette_bank;
 
 	/* misc */
-	int            watchdog_count;
+	int            m_watchdog_count;
 
 	/* devices */
-	running_device *maincpu;
-	running_device *audiocpu;
-	running_device *mcu;
+	device_t *m_maincpu;
+	device_t *m_audiocpu;
+	device_t *m_mcu;
 };
 
 
@@ -47,7 +46,7 @@ PALETTE_INIT( champbas );
 PALETTE_INIT( exctsccr );
 VIDEO_START( champbas );
 VIDEO_START( exctsccr );
-VIDEO_UPDATE( champbas );
-VIDEO_UPDATE( exctsccr );
+SCREEN_UPDATE( champbas );
+SCREEN_UPDATE( exctsccr );
 
 

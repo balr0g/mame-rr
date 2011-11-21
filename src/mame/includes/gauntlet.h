@@ -6,18 +6,16 @@
 
 #include "machine/atarigen.h"
 
-class gauntlet_state
+class gauntlet_state : public atarigen_state
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, gauntlet_state(machine)); }
+	gauntlet_state(const machine_config &mconfig, device_type type, const char *tag)
+		: atarigen_state(mconfig, type, tag) { }
 
-	gauntlet_state(running_machine &machine) { }
-
-	atarigen_state	atarigen;
-	UINT16			sound_reset_val;
-	UINT8			vindctr2_screen_refresh;
-	UINT8			playfield_tile_bank;
-	UINT8			playfield_color_bank;
+	UINT16			m_sound_reset_val;
+	UINT8			m_vindctr2_screen_refresh;
+	UINT8			m_playfield_tile_bank;
+	UINT8			m_playfield_color_bank;
 };
 
 
@@ -27,4 +25,4 @@ WRITE16_HANDLER( gauntlet_xscroll_w );
 WRITE16_HANDLER( gauntlet_yscroll_w );
 
 VIDEO_START( gauntlet );
-VIDEO_UPDATE( gauntlet );
+SCREEN_UPDATE( gauntlet );

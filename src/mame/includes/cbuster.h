@@ -4,28 +4,30 @@
 
 *************************************************************************/
 
-class cbuster_state
+class cbuster_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, cbuster_state(machine)); }
-
-	cbuster_state(running_machine &machine) { }
+	cbuster_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT16 *  pf1_rowscroll;
-	UINT16 *  pf2_rowscroll;
-	UINT16 *  pf3_rowscroll;
-	UINT16 *  pf4_rowscroll;
-	UINT16 *  ram;
+	UINT16 *  m_pf1_rowscroll;
+	UINT16 *  m_pf2_rowscroll;
+	UINT16 *  m_pf3_rowscroll;
+	UINT16 *  m_pf4_rowscroll;
+	UINT16 *  m_ram;
+	UINT16 *  m_spriteram16;
+	UINT16    m_spriteram16_buffer[0x400];
 
 	/* misc */
-	UINT16    prot;
-	int       pri;
+	UINT16    m_prot;
+	int       m_pri;
 
 	/* devices */
-	running_device *maincpu;
-	running_device *audiocpu;
-	running_device *deco16ic;
+	device_t *m_maincpu;
+	device_t *m_audiocpu;
+	device_t *m_deco_tilegen1;
+	device_t *m_deco_tilegen2;
 };
 
 
@@ -35,4 +37,5 @@ public:
 WRITE16_HANDLER( twocrude_palette_24bit_rg_w );
 WRITE16_HANDLER( twocrude_palette_24bit_b_w );
 
-VIDEO_UPDATE( twocrude );
+VIDEO_START( twocrude );
+SCREEN_UPDATE( twocrude );

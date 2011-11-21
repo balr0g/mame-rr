@@ -63,6 +63,8 @@ public:
 };
 
 
+extern const device_type *s_devices_sorted[];
+extern int m_device_count;
 
 /***************************************************************************
     INLINE FUNCTIONS
@@ -75,9 +77,7 @@ public:
 
 INLINE const char *input_port_string_from_index(UINT32 index)
 {
-	input_port_token token;
-	token.i = index;
-	return input_port_string_from_token(token);
+	return input_port_string_from_token((const char *)(FPTR)index);
 }
 
 
@@ -86,7 +86,7 @@ INLINE const char *input_port_string_from_index(UINT32 index)
     meets the general requirements
 -------------------------------------------------*/
 
-bool validate_tag(const game_driver *driver, const char *object, const char *tag)
+bool validate_tag(const game_driver &driver, const char *object, const char *tag)
 {
 	const char *validchars = "abcdefghijklmnopqrstuvwxyz0123456789_.:";
 	const char *begin = strrchr(tag, ':');
@@ -100,7 +100,7 @@ bool validate_tag(const game_driver *driver, const char *object, const char *tag
 		strcmp(tag, "left") == 0 ||
 		strcmp(tag, "right") == 0)
 	{
-		mame_printf_error("%s: %s has invalid generic tag '%s'\n", driver->source_file, driver->name, tag);
+		mame_printf_error("%s: %s has invalid generic tag '%s'\n", driver.source_file, driver.name, tag);
 		error = true;
 	}
 
@@ -108,19 +108,19 @@ bool validate_tag(const game_driver *driver, const char *object, const char *tag
 	{
 		if (*p != tolower((UINT8)*p))
 		{
-			mame_printf_error("%s: %s has %s with tag '%s' containing upper-case characters\n", driver->source_file, driver->name, object, tag);
+			mame_printf_error("%s: %s has %s with tag '%s' containing upper-case characters\n", driver.source_file, driver.name, object, tag);
 			error = true;
 			break;
 		}
 		if (*p == ' ')
 		{
-			mame_printf_error("%s: %s has %s with tag '%s' containing spaces\n", driver->source_file, driver->name, object, tag);
+			mame_printf_error("%s: %s has %s with tag '%s' containing spaces\n", driver.source_file, driver.name, object, tag);
 			error = true;
 			break;
 		}
 		if (strchr(validchars, *p) == NULL)
 		{
-			mame_printf_error("%s: %s has %s with tag '%s' containing invalid character '%c'\n", driver->source_file, driver->name, object, tag, *p);
+			mame_printf_error("%s: %s has %s with tag '%s' containing invalid character '%c'\n", driver.source_file, driver.name, object, tag, *p);
 			error = true;
 			break;
 		}
@@ -133,17 +133,17 @@ bool validate_tag(const game_driver *driver, const char *object, const char *tag
 
 	if (strlen(begin) == 0)
 	{
-		mame_printf_error("%s: %s has %s with 0-length tag\n", driver->source_file, driver->name, object);
+		mame_printf_error("%s: %s has %s with 0-length tag\n", driver.source_file, driver.name, object);
 		error = true;
 	}
 	if (strlen(begin) < MIN_TAG_LENGTH)
 	{
-		mame_printf_error("%s: %s has %s with tag '%s' < %d characters\n", driver->source_file, driver->name, object, tag, MIN_TAG_LENGTH);
+		mame_printf_error("%s: %s has %s with tag '%s' < %d characters\n", driver.source_file, driver.name, object, tag, MIN_TAG_LENGTH);
 		error = true;
 	}
 	if (strlen(begin) > MAX_TAG_LENGTH)
 	{
-		mame_printf_error("%s: %s has %s with tag '%s' > %d characters\n", driver->source_file, driver->name, object, tag, MAX_TAG_LENGTH);
+		mame_printf_error("%s: %s has %s with tag '%s' > %d characters\n", driver.source_file, driver.name, object, tag, MAX_TAG_LENGTH);
 		error = true;
 	}
 
@@ -314,113 +314,112 @@ static bool validate_inlines(void)
     information
 -------------------------------------------------*/
 
-static bool validate_driver(int drivnum, const machine_config *config, game_driver_map &names, game_driver_map &descriptions)
+static bool validate_driver(driver_enumerator &drivlist, game_driver_map &names, game_driver_map &descriptions)
 {
-	const game_driver *driver = drivers[drivnum];
-	const game_driver *clone_of;
+	const game_driver &driver = drivlist.driver();
+	const machine_config &config = drivlist.config();
 	const char *compatible_with;
-	const game_driver *other_drv;
 	bool error = FALSE, is_clone;
 	const char *s;
 
 	enum { NAME_LEN_PARENT = 8, NAME_LEN_CLONE = 16 };
 
 	/* check for duplicate names */
-	if (names.add(driver->name, driver, FALSE) == TMERR_DUPLICATE)
+	if (names.add(driver.name, &driver, FALSE) == TMERR_DUPLICATE)
 	{
-		const game_driver *match = names.find(driver->name);
-		mame_printf_error("%s: %s is a duplicate name (%s, %s)\n", driver->source_file, driver->name, match->source_file, match->name);
+		const game_driver *match = names.find(driver.name);
+		mame_printf_error("%s: %s is a duplicate name (%s, %s)\n", driver.source_file, driver.name, match->source_file, match->name);
 		error = true;
 	}
 
 	/* check for duplicate descriptions */
-	if (descriptions.add(driver->description, driver, FALSE) == TMERR_DUPLICATE)
+	if (descriptions.add(driver.description, &driver, FALSE) == TMERR_DUPLICATE)
 	{
-		const game_driver *match = descriptions.find(driver->description);
-		mame_printf_error("%s: %s is a duplicate description (%s, %s)\n", driver->source_file, driver->description, match->source_file, match->description);
+		const game_driver *match = descriptions.find(driver.description);
+		mame_printf_error("%s: %s is a duplicate description (%s, %s)\n", driver.source_file, driver.description, match->source_file, match->description);
 		error = true;
 	}
 
 	/* determine the clone */
-	is_clone = (strcmp(driver->parent, "0") != 0);
-	clone_of = driver_get_clone(driver);
-	if (clone_of && (clone_of->flags & GAME_IS_BIOS_ROOT))
+	is_clone = (strcmp(driver.parent, "0") != 0);
+	int clone_of = drivlist.clone(driver);
+	if (clone_of != -1 && (drivlist.driver(clone_of).flags & GAME_IS_BIOS_ROOT))
 		is_clone = false;
 
 	/* if we have at least 100 drivers, validate the clone */
 	/* (100 is arbitrary, but tries to avoid tiny.mak dependencies) */
-	if (driver_list_get_count(drivers) > 100 && !clone_of && is_clone)
+	if (driver_list::total() > 100 && clone_of == -1 && is_clone)
 	{
-		mame_printf_error("%s: %s is a non-existant clone\n", driver->source_file, driver->parent);
+		mame_printf_error("%s: %s is a non-existant clone\n", driver.source_file, driver.parent);
 		error = true;
 	}
 
 	/* look for recursive cloning */
-	if (clone_of == driver)
+	if (clone_of != -1 && &drivlist.driver(clone_of) == &driver)
 	{
-		mame_printf_error("%s: %s is set as a clone of itself\n", driver->source_file, driver->name);
+		mame_printf_error("%s: %s is set as a clone of itself\n", driver.source_file, driver.name);
 		error = true;
 	}
 
 	/* look for clones that are too deep */
-	if (clone_of != NULL && (clone_of = driver_get_clone(clone_of)) != NULL && (clone_of->flags & GAME_IS_BIOS_ROOT) == 0)
+	if (clone_of != -1 && (clone_of = drivlist.non_bios_clone(clone_of)) != -1)
 	{
-		mame_printf_error("%s: %s is a clone of a clone\n", driver->source_file, driver->name);
+		mame_printf_error("%s: %s is a clone of a clone\n", driver.source_file, driver.name);
 		error = true;
 	}
 
 	/* make sure the driver name is 8 chars or less */
-	if ((is_clone && strlen(driver->name) > NAME_LEN_CLONE) || ((!is_clone) && strlen(driver->name) > NAME_LEN_PARENT))
+	if ((is_clone && strlen(driver.name) > NAME_LEN_CLONE) || ((!is_clone) && strlen(driver.name) > NAME_LEN_PARENT))
 	{
-		mame_printf_error("%s: %s %s driver name must be %d characters or less\n", driver->source_file, driver->name,
+		mame_printf_error("%s: %s %s driver name must be %d characters or less\n", driver.source_file, driver.name,
 						  is_clone ? "clone" : "parent", is_clone ? NAME_LEN_CLONE : NAME_LEN_PARENT);
 		error = true;
 	}
 
 	/* make sure the year is only digits, '?' or '+' */
-	for (s = driver->year; *s; s++)
+	for (s = driver.year; *s; s++)
 		if (!isdigit((UINT8)*s) && *s != '?' && *s != '+')
 		{
-			mame_printf_error("%s: %s has an invalid year '%s'\n", driver->source_file, driver->name, driver->year);
+			mame_printf_error("%s: %s has an invalid year '%s'\n", driver.source_file, driver.name, driver.year);
 			error = true;
 			break;
 		}
 
 	/* normalize driver->compatible_with */
-	compatible_with = driver->compatible_with;
+	compatible_with = driver.compatible_with;
 	if ((compatible_with != NULL) && !strcmp(compatible_with, "0"))
 		compatible_with = NULL;
 
 	/* check for this driver being compatible with a non-existant driver */
-	if ((compatible_with != NULL) && (driver_get_name(driver->compatible_with) == NULL))
+	if ((compatible_with != NULL) && (drivlist.find(driver.compatible_with) == -1))
 	{
-		mame_printf_error("%s: is compatible with %s, which is not in drivers[]\n", driver->name, driver->compatible_with);
+		mame_printf_error("%s: is compatible with %s, which is not in drivers[]\n", driver.name, driver.compatible_with);
 		error = true;
 	}
 
 	/* check for clone_of and compatible_with being specified at the same time */
-	if ((driver_get_clone(driver) != NULL) && (compatible_with != NULL))
+	if ((drivlist.clone(driver) != -1) && (compatible_with != NULL))
 	{
-		mame_printf_error("%s: both compatible_with and clone_of are specified\n", driver->name);
+		mame_printf_error("%s: both compatible_with and clone_of are specified\n", driver.name);
 		error = true;
 	}
 
 	/* find any recursive dependencies on the current driver */
-	for (other_drv = driver_get_compatible(driver); other_drv != NULL; other_drv = driver_get_compatible(other_drv))
+	for (int other_drv = drivlist.compatible_with(driver); other_drv != -1; other_drv = drivlist.compatible_with(other_drv))
 	{
-		if (driver == other_drv)
+		if (&driver == &drivlist.driver(other_drv))
 		{
-			mame_printf_error("%s: recursive compatibility\n", driver->name);
+			mame_printf_error("%s: recursive compatibility\n", driver.name);
 			error = true;
 			break;
 		}
 	}
 
 	/* make sure sound-less drivers are flagged */
-	const device_config_sound_interface *sound;
-	if ((driver->flags & GAME_IS_BIOS_ROOT) == 0 && !config->m_devicelist.first(sound) && (driver->flags & GAME_NO_SOUND) == 0 && (driver->flags & GAME_NO_SOUND_HW) == 0)
+	const device_sound_interface *sound;
+	if ((driver.flags & GAME_IS_BIOS_ROOT) == 0 && !config.devicelist().first(sound) && (driver.flags & GAME_NO_SOUND) == 0 && (driver.flags & GAME_NO_SOUND_HW) == 0)
 	{
-		mame_printf_error("%s: %s missing GAME_NO_SOUND flag\n", driver->source_file, driver->name);
+		mame_printf_error("%s: %s missing GAME_NO_SOUND flag\n", driver.source_file, driver.name);
 		error = true;
 	}
 
@@ -432,9 +431,10 @@ static bool validate_driver(int drivnum, const machine_config *config, game_driv
     validate_roms - validate ROM definitions
 -------------------------------------------------*/
 
-static bool validate_roms(int drivnum, const machine_config *config, region_array *rgninfo, game_driver_map &roms)
+static bool validate_roms(driver_enumerator &drivlist, region_array *rgninfo, game_driver_map &roms)
 {
-	const game_driver *driver = drivers[drivnum];
+	const game_driver &driver = drivlist.driver();
+	const machine_config &config = drivlist.config();
 	int bios_flags = 0, last_bios = 0;
 	const char *last_rgnname = "???";
 	const char *last_name = "???";
@@ -442,25 +442,13 @@ static bool validate_roms(int drivnum, const machine_config *config, region_arra
 	int items_since_region = 1;
 	bool error = false;
 
-	/* check for duplicate ROM entries */
-/*
-    if (driver->rom != NULL && (driver->flags & GAME_NO_STANDALONE) == 0)
-    {
-        char romaddr[20];
-        sprintf(romaddr, "%p", driver->rom);
-        if (roms.add(romaddr, driver, FALSE) == TMERR_DUPLICATE)
-        {
-            const game_driver *match = roms.find(romaddr);
-            mame_printf_error("%s: %s uses the same ROM set as (%s, %s)\n", driver->source_file, driver->description, match->source_file, match->name);
-            error = true;
-        }
-    }
-*/
+	const rom_source *first_source = rom_first_source(config);
+
 	/* iterate, starting with the driver's ROMs and continuing with device ROMs */
-	for (const rom_source *source = rom_first_source(driver, config); source != NULL; source = rom_next_source(driver, config, source))
+	for (const rom_source *source = rom_first_source(config); source != NULL; source = rom_next_source(*source))
 	{
 		/* scan the ROM entries */
-		for (const rom_entry *romp = rom_first_region(driver, source); !ROMENTRY_ISEND(romp); romp++)
+		for (const rom_entry *romp = rom_first_region(*source); !ROMENTRY_ISEND(romp); romp++)
 		{
 			/* if this is a region, make sure it's valid, and record the length */
 			if (ROMENTRY_ISREGION(romp))
@@ -469,7 +457,7 @@ static bool validate_roms(int drivnum, const machine_config *config, region_arra
 
 				/* if we haven't seen any items since the last region, print a warning */
 				if (items_since_region == 0)
-					mame_printf_warning("%s: %s has empty ROM region '%s' (warning)\n", driver->source_file, driver->name, last_rgnname);
+					mame_printf_warning("%s: %s has empty ROM region '%s' (warning)\n", driver.source_file, driver.name, last_rgnname);
 				items_since_region = (ROMREGION_ISERASE(romp) || ROMREGION_ISDISKDATA(romp)) ? 1 : 0;
 				currgn = NULL;
 				last_rgnname = regiontag;
@@ -477,14 +465,7 @@ static bool validate_roms(int drivnum, const machine_config *config, region_arra
 				/* check for a valid tag */
 				if (regiontag == NULL)
 				{
-					mame_printf_error("%s: %s has NULL ROM_REGION tag\n", driver->source_file, driver->name);
-					error = true;
-				}
-
-				/* load by name entries must be 8 characters or less */
-				else if (ROMREGION_ISLOADBYNAME(romp) && strlen(regiontag) > 8)
-				{
-					mame_printf_error("%s: %s has load-by-name region '%s' with name >8 characters\n", driver->source_file, driver->name, regiontag);
+					mame_printf_error("%s: %s has NULL ROM_REGION tag\n", driver.source_file, driver.name);
 					error = true;
 				}
 
@@ -492,25 +473,24 @@ static bool validate_roms(int drivnum, const machine_config *config, region_arra
 				else
 				{
 					astring fulltag;
-					int rgnnum;
 
 					/* iterate over all regions found so far */
-					rom_region_name(fulltag, driver, source, romp);
-					for (rgnnum = 0; rgnnum < ARRAY_LENGTH(rgninfo->entries); rgnnum++)
+					rom_region_name(fulltag, &driver, source, romp);
+					for (int rgnnum = 0; rgnnum < ARRAY_LENGTH(rgninfo->entries); rgnnum++)
 					{
 						/* stop when we hit an empty */
-						if (rgninfo->entries[rgnnum].tag.len() == 0)
+						if (!rgninfo->entries[rgnnum].tag)
 						{
 							currgn = &rgninfo->entries[rgnnum];
-							currgn->tag.cpy(fulltag);
+							currgn->tag = fulltag;
 							currgn->length = ROMREGION_GETLENGTH(romp);
 							break;
 						}
 
 						/* fail if we hit a duplicate */
-						if (fulltag.cmp(rgninfo->entries[rgnnum].tag) == 0)
+						if (fulltag == rgninfo->entries[rgnnum].tag)
 						{
-							mame_printf_error("%s: %s has duplicate ROM_REGION tag '%s'\n", driver->source_file, driver->name, fulltag.cstr());
+							mame_printf_error("%s: %s has duplicate ROM_REGION tag '%s'\n", driver.source_file, driver.name, fulltag.cstr());
 							error = true;
 							break;
 						}
@@ -529,7 +509,7 @@ static bool validate_roms(int drivnum, const machine_config *config, region_arra
 				if (last_bios+1 != bios_flags)
 				{
 					const char *name = ROM_GETNAME(romp);
-					mame_printf_error("%s: %s has non-sequential bios %s\n", driver->source_file, driver->name, name);
+					mame_printf_error("%s: %s has non-sequential bios %s\n", driver.source_file, driver.name, name);
 					error = true;
 				}
 				last_bios = bios_flags;
@@ -538,7 +518,6 @@ static bool validate_roms(int drivnum, const machine_config *config, region_arra
 			/* if this is a file, make sure it is properly formatted */
 			else if (ROMENTRY_ISFILE(romp))
 			{
-				const char *hash;
 				const char *s;
 
 				items_since_region++;
@@ -550,19 +529,23 @@ static bool validate_roms(int drivnum, const machine_config *config, region_arra
 				for (s = last_name; *s; s++)
 					if (tolower((UINT8)*s) != *s)
 					{
-						mame_printf_error("%s: %s has upper case ROM name %s\n", driver->source_file, driver->name, last_name);
+						mame_printf_error("%s: %s has upper case ROM name %s\n", driver.source_file, driver.name, last_name);
 						error = true;
 						break;
 					}
 
 				/* make sure the hash is valid */
-				hash = ROM_GETHASHDATA(romp);
-				if (!hash_verify_string(hash))
+				hash_collection hashes;
+				if (!hashes.from_internal_string(ROM_GETHASHDATA(romp)))
 				{
-					mame_printf_error("%s: rom '%s' has an invalid hash string '%s'\n", driver->name, last_name, hash);
+					mame_printf_error("%s: rom '%s' has an invalid hash string '%s'\n", driver.name, last_name, ROM_GETHASHDATA(romp));
 					error = true;
 				}
 			}
+
+			// count copies/fills as valid items
+			else if (ROMENTRY_ISCOPY(romp) || ROMENTRY_ISFILL(romp))
+				items_since_region++;
 
 			/* for any non-region ending entries, make sure they don't extend past the end */
 			if (!ROMENTRY_ISREGIONEND(romp) && currgn != NULL)
@@ -571,7 +554,7 @@ static bool validate_roms(int drivnum, const machine_config *config, region_arra
 
 				if (ROM_GETOFFSET(romp) + ROM_GETLENGTH(romp) > currgn->length)
 				{
-					mame_printf_error("%s: %s has ROM %s extending past the defined memory region\n", driver->source_file, driver->name, last_name);
+					mame_printf_error("%s: %s has ROM %s extending past the defined memory region\n", driver.source_file, driver.name, last_name);
 					error = true;
 				}
 			}
@@ -579,7 +562,31 @@ static bool validate_roms(int drivnum, const machine_config *config, region_arra
 
 		/* final check for empty regions */
 		if (items_since_region == 0)
-			mame_printf_warning("%s: %s has empty ROM region (warning)\n", driver->source_file, driver->name);
+			mame_printf_warning("%s: %s has empty ROM region (warning)\n", driver.source_file, driver.name);
+
+		if (source!=first_source) {
+			// check for device roms
+			device_type type = source->type();
+			int cnt = 0;
+			for (const rom_entry *romp = rom_first_region(*source); !ROMENTRY_ISEND(romp); romp++)
+			{
+				if (ROMENTRY_ISFILE(romp)) {
+					cnt++;
+				}
+			}
+			if (cnt > 0) {
+				bool found = false;
+				for(int i=0;i<m_device_count;i++) {
+					if (type==*s_devices_sorted[i])
+					{
+						found = true;
+						break;
+					}
+				}
+				if (!found)
+					mame_printf_error("Device %s is not listed in device list (mame_dev.lst / mess_dev.lst)\n", source->shortname());
+			}
+		}
 	}
 
 	return error;
@@ -591,20 +598,21 @@ static bool validate_roms(int drivnum, const machine_config *config, region_arra
     configurations
 -------------------------------------------------*/
 
-static bool validate_display(int drivnum, const machine_config *config)
+static bool validate_display(driver_enumerator &drivlist)
 {
-	const game_driver *driver = drivers[drivnum];
+	const game_driver &driver = drivlist.driver();
+	const machine_config &config = drivlist.config();
 	bool palette_modes = false;
 	bool error = false;
 
-	for (const screen_device_config *scrconfig = screen_first(*config); scrconfig != NULL; scrconfig = screen_next(scrconfig))
+	for (const screen_device *scrconfig = config.first_screen(); scrconfig != NULL; scrconfig = scrconfig->next_screen())
 		if (scrconfig->format() == BITMAP_FORMAT_INDEXED16)
 			palette_modes = true;
 
 	/* check for empty palette */
-	if (palette_modes && config->m_total_colors == 0)
+	if (palette_modes && config.m_total_colors == 0)
 	{
-		mame_printf_error("%s: %s has zero palette entries\n", driver->source_file, driver->name);
+		mame_printf_error("%s: %s has zero palette entries\n", driver.source_file, driver.name);
 		error = true;
 	}
 
@@ -617,23 +625,24 @@ static bool validate_display(int drivnum, const machine_config *config)
     configuration
 -------------------------------------------------*/
 
-static bool validate_gfx(int drivnum, const machine_config *config, region_array *rgninfo)
+static bool validate_gfx(driver_enumerator &drivlist, region_array *rgninfo)
 {
-	const game_driver *driver = drivers[drivnum];
+	const game_driver &driver = drivlist.driver();
+	const machine_config &config = drivlist.config();
 	bool error = false;
 	int gfxnum;
 
 	/* bail if no gfx */
-	if (!config->m_gfxdecodeinfo)
+	if (!config.m_gfxdecodeinfo)
 		return false;
 
 	/* iterate over graphics decoding entries */
-	for (gfxnum = 0; gfxnum < MAX_GFX_ELEMENTS && config->m_gfxdecodeinfo[gfxnum].gfxlayout != NULL; gfxnum++)
+	for (gfxnum = 0; gfxnum < MAX_GFX_ELEMENTS && config.m_gfxdecodeinfo[gfxnum].gfxlayout != NULL; gfxnum++)
 	{
-		const gfx_decode_entry *gfx = &config->m_gfxdecodeinfo[gfxnum];
+		const gfx_decode_entry *gfx = &config.m_gfxdecodeinfo[gfxnum];
 		const char *region = gfx->memory_region;
-		int xscale = (config->m_gfxdecodeinfo[gfxnum].xscale == 0) ? 1 : config->m_gfxdecodeinfo[gfxnum].xscale;
-		int yscale = (config->m_gfxdecodeinfo[gfxnum].yscale == 0) ? 1 : config->m_gfxdecodeinfo[gfxnum].yscale;
+		int xscale = (config.m_gfxdecodeinfo[gfxnum].xscale == 0) ? 1 : config.m_gfxdecodeinfo[gfxnum].xscale;
+		int yscale = (config.m_gfxdecodeinfo[gfxnum].yscale == 0) ? 1 : config.m_gfxdecodeinfo[gfxnum].yscale;
 		const gfx_layout *gl = gfx->gfxlayout;
 		int israw = (gl->planeoffset[0] == GFX_RAW);
 		int planes = gl->planes;
@@ -650,15 +659,15 @@ static bool validate_gfx(int drivnum, const machine_config *config, region_array
 			for (rgnnum = 0; rgnnum < ARRAY_LENGTH(rgninfo->entries); rgnnum++)
 			{
 				/* stop if we hit an empty */
-				if (rgninfo->entries[rgnnum].tag == NULL)
+				if (!rgninfo->entries[rgnnum].tag)
 				{
-					mame_printf_error("%s: %s has gfx[%d] referencing non-existent region '%s'\n", driver->source_file, driver->name, gfxnum, region);
+					mame_printf_error("%s: %s has gfx[%d] referencing non-existent region '%s'\n", driver.source_file, driver.name, gfxnum, region);
 					error = true;
 					break;
 				}
 
 				/* if we hit a match, check against the length */
-				if (rgninfo->entries[rgnnum].tag.cmp(region) == 0)
+				if (rgninfo->entries[rgnnum].tag == region)
 				{
 					/* if we have a valid region, and we're not using auto-sizing, check the decode against the region length */
 					if (!IS_FRAC(total))
@@ -683,7 +692,7 @@ static bool validate_gfx(int drivnum, const machine_config *config, region_array
 						/* if not, this is an error */
 						if ((start + len) / 8 > avail)
 						{
-							mame_printf_error("%s: %s has gfx[%d] extending past allocated memory of region '%s'\n", driver->source_file, driver->name, gfxnum, region);
+							mame_printf_error("%s: %s has gfx[%d] extending past allocated memory of region '%s'\n", driver.source_file, driver.name, gfxnum, region);
 							error = true;
 						}
 					}
@@ -696,13 +705,13 @@ static bool validate_gfx(int drivnum, const machine_config *config, region_array
 		{
 			if (total != RGN_FRAC(1,1))
 			{
-				mame_printf_error("%s: %s has gfx[%d] with unsupported layout total\n", driver->source_file, driver->name, gfxnum);
+				mame_printf_error("%s: %s has gfx[%d] with unsupported layout total\n", driver.source_file, driver.name, gfxnum);
 				error = true;
 			}
 
 			if (xscale != 1 || yscale != 1)
 			{
-				mame_printf_error("%s: %s has gfx[%d] with unsupported xscale/yscale\n", driver->source_file, driver->name, gfxnum);
+				mame_printf_error("%s: %s has gfx[%d] with unsupported xscale/yscale\n", driver.source_file, driver.name, gfxnum);
 				error = true;
 			}
 		}
@@ -710,13 +719,13 @@ static bool validate_gfx(int drivnum, const machine_config *config, region_array
 		{
 			if (planes > MAX_GFX_PLANES)
 			{
-				mame_printf_error("%s: %s has gfx[%d] with invalid planes\n", driver->source_file, driver->name, gfxnum);
+				mame_printf_error("%s: %s has gfx[%d] with invalid planes\n", driver.source_file, driver.name, gfxnum);
 				error = true;
 			}
 
 			if (xscale * width > MAX_ABS_GFX_SIZE || yscale * height > MAX_ABS_GFX_SIZE)
 			{
-				mame_printf_error("%s: %s has gfx[%d] with invalid xscale/yscale\n", driver->source_file, driver->name, gfxnum);
+				mame_printf_error("%s: %s has gfx[%d] with invalid xscale/yscale\n", driver.source_file, driver.name, gfxnum);
 				error = true;
 			}
 		}
@@ -732,13 +741,13 @@ static bool validate_gfx(int drivnum, const machine_config *config, region_array
     strings
 -------------------------------------------------*/
 
-static int get_defstr_index(int_map &defstr_map, const char *name, const game_driver *driver, bool *error)
+static int get_defstr_index(int_map &defstr_map, const char *name, const game_driver &driver, bool *error)
 {
 	/* check for strings that should be DEF_STR */
 	int strindex = defstr_map.find(name);
 	if (strindex != 0 && name != input_port_string_from_index(strindex) && error != NULL)
 	{
-		mame_printf_error("%s: %s must use DEF_STR( %s )\n", driver->source_file, driver->name, name);
+		mame_printf_error("%s: %s must use DEF_STR( %s )\n", driver.source_file, driver.name, name);
 		*error = true;
 	}
 
@@ -751,7 +760,7 @@ static int get_defstr_index(int_map &defstr_map, const char *name, const game_dr
     analog input field
 -------------------------------------------------*/
 
-static void validate_analog_input_field(const input_field_config *field, const game_driver *driver, bool *error)
+static void validate_analog_input_field(input_field_config *field, const game_driver &driver, bool *error)
 {
 	INT32 analog_max = field->max;
 	INT32 analog_min = field->min;
@@ -766,7 +775,7 @@ static void validate_analog_input_field(const input_field_config *field, const g
 		/* positional port size must fit in bits used */
 		if (((field->mask >> shift) + 1) < field->max)
 		{
-			mame_printf_error("%s: %s has an analog port with a positional port size bigger then the mask size\n", driver->source_file, driver->name);
+			mame_printf_error("%s: %s has an analog port with a positional port size bigger then the mask size\n", driver.source_file, driver.name);
 			*error = true;
 		}
 	}
@@ -775,7 +784,7 @@ static void validate_analog_input_field(const input_field_config *field, const g
 		/* only positional controls use PORT_WRAPS */
 		if (field->flags & ANALOG_FLAG_WRAPS)
 		{
-			mame_printf_error("%s: %s only positional analog ports use PORT_WRAPS\n", driver->source_file, driver->name);
+			mame_printf_error("%s: %s only positional analog ports use PORT_WRAPS\n", driver.source_file, driver.name);
 			*error = true;
 		}
 	}
@@ -783,14 +792,14 @@ static void validate_analog_input_field(const input_field_config *field, const g
 	/* analog ports must have a valid sensitivity */
 	if (field->sensitivity == 0)
 	{
-		mame_printf_error("%s: %s has an analog port with zero sensitivity\n", driver->source_file, driver->name);
+		mame_printf_error("%s: %s has an analog port with zero sensitivity\n", driver.source_file, driver.name);
 		*error = true;
 	}
 
 	/* check that the default falls in the bitmask range */
 	if (field->defvalue & ~field->mask)
 	{
-		mame_printf_error("%s: %s has an analog port with a default value out of the bitmask range\n", driver->source_file, driver->name);
+		mame_printf_error("%s: %s has an analog port with a default value out of the bitmask range\n", driver.source_file, driver.name);
 		*error = true;
 	}
 
@@ -810,7 +819,7 @@ static void validate_analog_input_field(const input_field_config *field, const g
 		/* check that the default falls in the MINMAX range */
 		if (default_value < analog_min || default_value > analog_max)
 		{
-			mame_printf_error("%s: %s has an analog port with a default value out PORT_MINMAX range\n", driver->source_file, driver->name);
+			mame_printf_error("%s: %s has an analog port with a default value out PORT_MINMAX range\n", driver.source_file, driver.name);
 			*error = true;
 		}
 
@@ -818,14 +827,14 @@ static void validate_analog_input_field(const input_field_config *field, const g
 		/* we use the unadjusted min for testing */
 		if (field->min & ~field->mask || analog_max & ~field->mask)
 		{
-			mame_printf_error("%s: %s has an analog port with a PORT_MINMAX value out of the bitmask range\n", driver->source_file, driver->name);
+			mame_printf_error("%s: %s has an analog port with a PORT_MINMAX value out of the bitmask range\n", driver.source_file, driver.name);
 			*error = true;
 		}
 
 		/* absolute analog ports do not use PORT_RESET */
 		if (field->flags & ANALOG_FLAG_RESET)
 		{
-			mame_printf_error("%s: %s - absolute analog ports do not use PORT_RESET\n", driver->source_file, driver->name);
+			mame_printf_error("%s: %s - absolute analog ports do not use PORT_RESET\n", driver.source_file, driver.name);
 			*error = true;
 		}
 	}
@@ -839,7 +848,7 @@ static void validate_analog_input_field(const input_field_config *field, const g
 			/* relative devices do not use PORT_MINMAX */
 			if (field->min != 0 || field->max != field->mask)
 			{
-				mame_printf_error("%s: %s - relative ports do not use PORT_MINMAX\n", driver->source_file, driver->name);
+				mame_printf_error("%s: %s - relative ports do not use PORT_MINMAX\n", driver.source_file, driver.name);
 				*error = true;
 			}
 
@@ -847,7 +856,7 @@ static void validate_analog_input_field(const input_field_config *field, const g
 			/* the counter is at 0 on power up */
 			if (field->defvalue != 0)
 			{
-				mame_printf_error("%s: %s - relative ports do not use a default value other then 0\n", driver->source_file, driver->name);
+				mame_printf_error("%s: %s - relative ports do not use a default value other then 0\n", driver.source_file, driver.name);
 				*error = true;
 			}
 		}
@@ -860,75 +869,75 @@ static void validate_analog_input_field(const input_field_config *field, const g
     setting
 -------------------------------------------------*/
 
-static void validate_dip_settings(const input_field_config *field, const game_driver *driver, int_map &defstr_map, bool *error)
+static void validate_dip_settings(input_field_config *field, const game_driver &driver, int_map &defstr_map, bool *error)
 {
 	const char *demo_sounds = input_port_string_from_index(INPUT_STRING_Demo_Sounds);
 	const char *flipscreen = input_port_string_from_index(INPUT_STRING_Flip_Screen);
-	UINT8 coin_list[INPUT_STRING_1C_9C + 1 - INPUT_STRING_9C_1C] = { 0 };
+	UINT8 coin_list[__input_string_coinage_end + 1 - __input_string_coinage_start] = { 0 };
 	const input_setting_config *setting;
 	int coin_error = FALSE;
 
 	/* iterate through the settings */
-	for (setting = field->settinglist; setting != NULL; setting = setting->next)
+	for (setting = field->settinglist().first(); setting != NULL; setting = setting->next())
 	{
 		int strindex = get_defstr_index(defstr_map, setting->name, driver, error);
 
 		/* note any coinage strings */
-		if (strindex >= INPUT_STRING_9C_1C && strindex <= INPUT_STRING_1C_9C)
-			coin_list[strindex - INPUT_STRING_9C_1C] = 1;
+		if (strindex >= __input_string_coinage_start && strindex <= __input_string_coinage_end)
+			coin_list[strindex - __input_string_coinage_start] = 1;
 
 		/* make sure demo sounds default to on */
 		if (field->name == demo_sounds && strindex == INPUT_STRING_On && field->defvalue != setting->value)
 		{
-			mame_printf_error("%s: %s Demo Sounds must default to On\n", driver->source_file, driver->name);
+			mame_printf_error("%s: %s Demo Sounds must default to On\n", driver.source_file, driver.name);
 			*error = true;
 		}
 
 		/* check for bad demo sounds options */
 		if (field->name == demo_sounds && (strindex == INPUT_STRING_Yes || strindex == INPUT_STRING_No))
 		{
-			mame_printf_error("%s: %s has wrong Demo Sounds option %s (must be Off/On)\n", driver->source_file, driver->name, setting->name);
+			mame_printf_error("%s: %s has wrong Demo Sounds option %s (must be Off/On)\n", driver.source_file, driver.name, setting->name);
 			*error = true;
 		}
 
 		/* check for bad flip screen options */
 		if (field->name == flipscreen && (strindex == INPUT_STRING_Yes || strindex == INPUT_STRING_No))
 		{
-			mame_printf_error("%s: %s has wrong Flip Screen option %s (must be Off/On)\n", driver->source_file, driver->name, setting->name);
+			mame_printf_error("%s: %s has wrong Flip Screen option %s (must be Off/On)\n", driver.source_file, driver.name, setting->name);
 			*error = true;
 		}
 
 		/* if we have a neighbor, compare ourselves to him */
-		if (setting->next != NULL)
+		if (setting->next() != NULL)
 		{
-			int next_strindex = get_defstr_index(defstr_map, setting->next->name, driver, error);
+			int next_strindex = get_defstr_index(defstr_map, setting->next()->name, driver, error);
 
 			/* check for inverted off/on dispswitch order */
 			if (strindex == INPUT_STRING_On && next_strindex == INPUT_STRING_Off)
 			{
-				mame_printf_error("%s: %s has inverted Off/On dipswitch order\n", driver->source_file, driver->name);
+				mame_printf_error("%s: %s has inverted Off/On dipswitch order\n", driver.source_file, driver.name);
 				*error = true;
 			}
 
 			/* check for inverted yes/no dispswitch order */
 			else if (strindex == INPUT_STRING_Yes && next_strindex == INPUT_STRING_No)
 			{
-				mame_printf_error("%s: %s has inverted No/Yes dipswitch order\n", driver->source_file, driver->name);
+				mame_printf_error("%s: %s has inverted No/Yes dipswitch order\n", driver.source_file, driver.name);
 				*error = true;
 			}
 
 			/* check for inverted upright/cocktail dispswitch order */
 			else if (strindex == INPUT_STRING_Cocktail && next_strindex == INPUT_STRING_Upright)
 			{
-				mame_printf_error("%s: %s has inverted Upright/Cocktail dipswitch order\n", driver->source_file, driver->name);
+				mame_printf_error("%s: %s has inverted Upright/Cocktail dipswitch order\n", driver.source_file, driver.name);
 				*error = true;
 			}
 
 			/* check for proper coin ordering */
-			else if (strindex >= INPUT_STRING_9C_1C && strindex <= INPUT_STRING_1C_9C && next_strindex >= INPUT_STRING_9C_1C && next_strindex <= INPUT_STRING_1C_9C &&
-					 strindex >= next_strindex && memcmp(&setting->condition, &setting->next->condition, sizeof(setting->condition)) == 0)
+			else if (strindex >= __input_string_coinage_start && strindex <= __input_string_coinage_end && next_strindex >= __input_string_coinage_start && next_strindex <= __input_string_coinage_end &&
+					 strindex >= next_strindex && memcmp(&setting->condition, &setting->next()->condition, sizeof(setting->condition)) == 0)
 			{
-				mame_printf_error("%s: %s has unsorted coinage %s > %s\n", driver->source_file, driver->name, setting->name, setting->next->name);
+				mame_printf_error("%s: %s has unsorted coinage %s > %s\n", driver.source_file, driver.name, setting->name, setting->next()->name);
 				coin_error = *error = true;
 			}
 		}
@@ -939,10 +948,10 @@ static void validate_dip_settings(const input_field_config *field, const game_dr
 	{
 		int entry;
 
-		mame_printf_error("%s: %s proper coin sort order should be:\n", driver->source_file, driver->name);
+		mame_printf_error("%s: %s proper coin sort order should be:\n", driver.source_file, driver.name);
 		for (entry = 0; entry < ARRAY_LENGTH(coin_list); entry++)
 			if (coin_list[entry])
-				mame_printf_error("%s\n", input_port_string_from_index(INPUT_STRING_9C_1C + entry));
+				mame_printf_error("%s\n", input_port_string_from_index(__input_string_coinage_start + entry));
 	}
 }
 
@@ -951,43 +960,46 @@ static void validate_dip_settings(const input_field_config *field, const game_dr
     validate_inputs - validate input configuration
 -------------------------------------------------*/
 
-static bool validate_inputs(int drivnum, const machine_config *config, int_map &defstr_map, ioport_list &portlist)
+static bool validate_inputs(driver_enumerator &drivlist, int_map &defstr_map, ioport_list &portlist)
 {
-	const input_port_config *scanport;
-	const input_port_config *port;
-	const input_field_config *field;
-	const game_driver *driver = drivers[drivnum];
+	input_port_config *scanport;
+	input_port_config *port;
+	input_field_config *field;
+	const game_driver &driver = drivlist.driver();
+	const machine_config &config = drivlist.config();
 	int empty_string_found = FALSE;
-	char errorbuf[1024];
 	bool error = false;
+	astring errorbuf;
 
 	/* skip if no ports */
-	if (driver->ipt == NULL)
+	if (driver.ipt == NULL)
 		return FALSE;
 
 	/* allocate the input ports */
-	input_port_list_init(portlist, driver->ipt, errorbuf, sizeof(errorbuf), FALSE);
-	if (errorbuf[0] != 0)
+	for (device_t *cfg = config.devicelist().first(); cfg != NULL; cfg = cfg->next())
 	{
-		mame_printf_error("%s: %s has input port errors:\n%s\n", driver->source_file, driver->name, errorbuf);
-		error = true;
+		input_port_list_init(*cfg, portlist, errorbuf);
+		if (errorbuf)
+		{
+			mame_printf_error("%s: %s has input port errors:\n%s\n", driver.source_file, driver.name, errorbuf.cstr());
+			error = true;
+		}
 	}
 
 	/* check for duplicate tags */
 	for (port = portlist.first(); port != NULL; port = port->next())
-		if (port->tag != NULL)
-			for (scanport = port->next(); scanport != NULL; scanport = scanport->next())
-				if (scanport->tag != NULL && strcmp(port->tag, scanport->tag) == 0)
-				{
-					mame_printf_error("%s: %s has a duplicate input port tag '%s'\n", driver->source_file, driver->name, port->tag);
-					error = true;
-				}
+		for (scanport = port->next(); scanport != NULL; scanport = scanport->next())
+			if (strcmp(port->tag(), scanport->tag()) == 0)
+			{
+				mame_printf_error("%s: %s has a duplicate input port tag '%s'\n", driver.source_file, driver.name, port->tag());
+				error = true;
+			}
 
 	/* iterate over the results */
 	for (port = portlist.first(); port != NULL; port = port->next())
-		for (field = port->fieldlist; field != NULL; field = field->next)
+		for (field = port->fieldlist().first(); field != NULL; field = field->next())
 		{
-			const input_setting_config *setting;
+			input_setting_config *setting;
 			//int strindex = 0;
 
 			/* verify analog inputs */
@@ -1000,7 +1012,7 @@ static bool validate_inputs(int drivnum, const machine_config *config, int_map &
 				/* dip switch fields must have a name */
 				if (field->name == NULL)
 				{
-					mame_printf_error("%s: %s has a DIP switch name or setting with no name\n", driver->source_file, driver->name);
+					mame_printf_error("%s: %s has a DIP switch name or setting with no name\n", driver.source_file, driver.name);
 					error = true;
 				}
 
@@ -1011,7 +1023,7 @@ static bool validate_inputs(int drivnum, const machine_config *config, int_map &
 			/* look for invalid (0) types which should be mapped to IPT_OTHER */
 			if (field->type == IPT_INVALID)
 			{
-				mame_printf_error("%s: %s has an input port with an invalid type (0); use IPT_OTHER instead\n", driver->source_file, driver->name);
+				mame_printf_error("%s: %s has an input port with an invalid type (0); use IPT_OTHER instead\n", driver.source_file, driver.name);
 				error = true;
 			}
 
@@ -1021,21 +1033,21 @@ static bool validate_inputs(int drivnum, const machine_config *config, int_map &
 				/* check for empty string */
 				if (field->name[0] == 0 && !empty_string_found)
 				{
-					mame_printf_error("%s: %s has an input with an empty string\n", driver->source_file, driver->name);
+					mame_printf_error("%s: %s has an input with an empty string\n", driver.source_file, driver.name);
 					empty_string_found = error = true;
 				}
 
 				/* check for trailing spaces */
 				if (field->name[0] != 0 && field->name[strlen(field->name) - 1] == ' ')
 				{
-					mame_printf_error("%s: %s input '%s' has trailing spaces\n", driver->source_file, driver->name, field->name);
+					mame_printf_error("%s: %s input '%s' has trailing spaces\n", driver.source_file, driver.name, field->name);
 					error = true;
 				}
 
 				/* check for invalid UTF-8 */
 				if (!utf8_is_valid_string(field->name))
 				{
-					mame_printf_error("%s: %s input '%s' has invalid characters\n", driver->source_file, driver->name, field->name);
+					mame_printf_error("%s: %s input '%s' has invalid characters\n", driver.source_file, driver.name, field->name);
 					error = true;
 				}
 
@@ -1047,31 +1059,35 @@ static bool validate_inputs(int drivnum, const machine_config *config, int_map &
 			if (field->condition.tag != NULL)
 			{
 				/* find a matching port */
-				for (scanport = portlist.first(); scanport != NULL; scanport = scanport->next())
-					if (scanport->tag != NULL && strcmp(field->condition.tag, scanport->tag) == 0)
+				for (scanport = portlist.first(); scanport != NULL; scanport = scanport->next()) {
+					astring porttag;
+					port->owner().subtag(porttag, field->condition.tag);
+					if (strcmp(porttag.cstr(), scanport->tag()) == 0)
 						break;
-
+				}
 				/* if none, error */
 				if (scanport == NULL)
 				{
-					mame_printf_error("%s: %s has a condition referencing non-existent input port tag '%s'\n", driver->source_file, driver->name, field->condition.tag);
+					mame_printf_error("%s: %s has a condition referencing non-existent input port tag '%s'\n", driver.source_file, driver.name, field->condition.tag);
 					error = true;
 				}
 			}
 
 			/* verify conditions on the settings */
-			for (setting = field->settinglist; setting != NULL; setting = setting->next)
+			for (setting = field->settinglist().first(); setting != NULL; setting = setting->next())
 				if (setting->condition.tag != NULL)
 				{
 					/* find a matching port */
-					for (scanport = portlist.first(); scanport != NULL; scanport = scanport->next())
-						if (scanport->tag != NULL && strcmp(setting->condition.tag, scanport->tag) == 0)
+					for (scanport = portlist.first(); scanport != NULL; scanport = scanport->next()) {
+						astring porttag;
+						port->owner().subtag(porttag, setting->condition.tag);
+						if (strcmp(porttag.cstr(), scanport->tag()) == 0)
 							break;
-
+					}
 					/* if none, error */
 					if (scanport == NULL)
 					{
-						mame_printf_error("%s: %s has a condition referencing non-existent input port tag '%s'\n", driver->source_file, driver->name, setting->condition.tag);
+						mame_printf_error("%s: %s has a condition referencing non-existent input port tag '%s'\n", driver.source_file, driver.name, setting->condition.tag);
 						error = true;
 					}
 				}
@@ -1079,7 +1095,6 @@ static bool validate_inputs(int drivnum, const machine_config *config, int_map &
 
 	error = error || validate_natural_keyboard_statics();
 
-	/* free the config */
 	return error;
 }
 
@@ -1089,27 +1104,31 @@ static bool validate_inputs(int drivnum, const machine_config *config, int_map &
     checks
 -------------------------------------------------*/
 
-static bool validate_devices(int drivnum, const machine_config *config, const ioport_list &portlist, region_array *rgninfo)
+static bool validate_devices(driver_enumerator &drivlist, const ioport_list &portlist, region_array *rgninfo)
 {
 	bool error = false;
-	const game_driver *driver = drivers[drivnum];
+	const game_driver &driver = drivlist.driver();
+	const machine_config &config = drivlist.config();
 
-	for (const device_config *devconfig = config->m_devicelist.first(); devconfig != NULL; devconfig = devconfig->next())
+	for (const device_t *device = config.devicelist().first(); device != NULL; device = device->next())
 	{
 		/* validate the device tag */
-		if (!validate_tag(driver, devconfig->name(), devconfig->tag()))
+		if (!validate_tag(driver, device->name(), device->tag()))
 			error = true;
 
 		/* look for duplicates */
-		for (const device_config *scanconfig = config->m_devicelist.first(); scanconfig != devconfig; scanconfig = scanconfig->next())
-			if (strcmp(scanconfig->tag(), devconfig->tag()) == 0)
+		for (const device_t *scandevice = config.devicelist().first(); scandevice != device; scandevice = scandevice->next())
+			if (strcmp(scandevice->tag(), device->tag()) == 0)
 			{
-				mame_printf_warning("%s: %s has multiple devices with the tag '%s'\n", driver->source_file, driver->name, devconfig->tag());
+				mame_printf_warning("%s: %s has multiple devices with the tag '%s'\n", driver.source_file, driver.name, device->tag());
 				break;
 			}
 
+		if (device->rom_region() != NULL && (strcmp(device->shortname(),"") == 0)) {
+			mame_printf_warning("Device %s does not have short name defined\n", device->name());
+		}
 		/* check for device-specific validity check */
-		if (devconfig->validity_check(*driver))
+		if (device->validity_check(config.options(), driver))
 			error = true;
 
 	}
@@ -1118,13 +1137,62 @@ static bool validate_devices(int drivnum, const machine_config *config, const io
 
 
 /*-------------------------------------------------
-    mame_validitychecks - master validity checker
+    validate_slots - run per-slot validity
+    checks
 -------------------------------------------------*/
 
-bool mame_validitychecks(const game_driver *curdriver)
+static bool validate_slots(driver_enumerator &drivlist)
+{
+	bool error = false;
+	const machine_config &config = drivlist.config();
+
+	const device_slot_interface *slot = NULL;
+	for (bool gotone = config.devicelist().first(slot); gotone; gotone = slot->next(slot))
+	{
+		const slot_interface* intf = slot->get_slot_interfaces();
+		for (int j = 0; intf[j].name != NULL; j++)
+		{
+			device_t *dev = (*intf[j].devtype)(config, "dummy", config.devicelist().first(), 0);
+			dev->config_complete();
+			if (dev->rom_region() != NULL)
+			{
+				int cnt = 0;
+				for (const rom_entry *romp = rom_first_region(*dev); !ROMENTRY_ISEND(romp); romp++)
+				{
+					if (ROMENTRY_ISFILE(romp)) {
+						cnt++;
+					}
+				}
+
+				if (cnt > 0) {
+					bool found = false;
+					for(int i=0;i<m_device_count;i++) {
+						if (intf[j].devtype==*s_devices_sorted[i])
+						{
+							found = true;
+							break;
+						}
+					}
+					if (!found) {
+						mame_printf_error("Device %s in slot %s is not listed in device list\n", dev->name(), intf[j].name);
+						error = true;
+					}
+				}
+			}
+			global_free(dev);
+		}
+	}
+	return error;
+}
+
+
+/*-------------------------------------------------
+    validate_drivers - master validity checker
+-------------------------------------------------*/
+
+void validate_drivers(emu_options &options, const game_driver *curdriver)
 {
 	osd_ticks_t prep = 0;
-	osd_ticks_t expansion = 0;
 	osd_ticks_t driver_checks = 0;
 	osd_ticks_t rom_checks = 0;
 	osd_ticks_t gfx_checks = 0;
@@ -1132,7 +1200,7 @@ bool mame_validitychecks(const game_driver *curdriver)
 	osd_ticks_t input_checks = 0;
 	osd_ticks_t device_checks = 0;
 
-	int drivnum, strnum;
+	int strnum;
 	bool error = false;
 	UINT16 lsbtest;
 	UINT8 a, b;
@@ -1184,58 +1252,58 @@ bool mame_validitychecks(const game_driver *curdriver)
 	prep += get_profile_ticks();
 
 	/* iterate over all drivers */
-	for (drivnum = 0; drivers[drivnum]; drivnum++)
+	driver_enumerator drivlist(options);
+	while (drivlist.next())
 	{
-		const game_driver *driver = drivers[drivnum];
+		const game_driver &driver = drivlist.driver();
 		ioport_list portlist;
-		machine_config *config;
 		region_array rgninfo;
 
 		/* non-debug builds only care about games in the same driver */
-		if (curdriver != NULL && strcmp(curdriver->source_file, driver->source_file) != 0)
+		if (curdriver != NULL && strcmp(curdriver->source_file, driver.source_file) != 0)
 			continue;
 
-		/* expand the machine driver */
-		expansion -= get_profile_ticks();
-		config = global_alloc(machine_config(driver->machine_config));
-		expansion += get_profile_ticks();
+		try
+		{
+			/* validate the driver entry */
+			driver_checks -= get_profile_ticks();
+			error = validate_driver(drivlist, names, descriptions) || error;
+			driver_checks += get_profile_ticks();
 
-		/* validate the driver entry */
-		driver_checks -= get_profile_ticks();
-		error = validate_driver(drivnum, config, names, descriptions) || error;
-		driver_checks += get_profile_ticks();
+			/* validate the ROM information */
+			rom_checks -= get_profile_ticks();
+			error = validate_roms(drivlist, &rgninfo, roms) || error;
+			rom_checks += get_profile_ticks();
 
-		/* validate the ROM information */
-		rom_checks -= get_profile_ticks();
-		error = validate_roms(drivnum, config, &rgninfo, roms) || error;
-		rom_checks += get_profile_ticks();
+			/* validate input ports */
+			input_checks -= get_profile_ticks();
+			error = validate_inputs(drivlist, defstr, portlist) || error;
+			input_checks += get_profile_ticks();
 
-		/* validate input ports */
-		input_checks -= get_profile_ticks();
-		error = validate_inputs(drivnum, config, defstr, portlist) || error;
-		input_checks += get_profile_ticks();
+			/* validate the display */
+			display_checks -= get_profile_ticks();
+			error = validate_display(drivlist) || error;
+			display_checks += get_profile_ticks();
 
-		/* validate the display */
-		display_checks -= get_profile_ticks();
-		error = validate_display(drivnum, config) || error;
-		display_checks += get_profile_ticks();
+			/* validate the graphics decoding */
+			gfx_checks -= get_profile_ticks();
+			error = validate_gfx(drivlist, &rgninfo) || error;
+			gfx_checks += get_profile_ticks();
 
-		/* validate the graphics decoding */
-		gfx_checks -= get_profile_ticks();
-		error = validate_gfx(drivnum, config, &rgninfo) || error;
-		gfx_checks += get_profile_ticks();
-
-		/* validate devices */
-		device_checks -= get_profile_ticks();
-		error = validate_devices(drivnum, config, portlist, &rgninfo) || error;
-		device_checks += get_profile_ticks();
-
-		global_free(config);
+			/* validate devices */
+			device_checks -= get_profile_ticks();
+			error = validate_devices(drivlist, portlist, &rgninfo) || error;
+			error = validate_slots(drivlist) || error;
+			device_checks += get_profile_ticks();
+		}
+		catch (emu_fatalerror &err)
+		{
+			throw emu_fatalerror("Validating %s (%s): %s", driver.name, driver.source_file, err.string());
+		}
 	}
 
 #if (REPORT_TIMES)
 	mame_printf_info("Prep:      %8dm\n", (int)(prep / 1000000));
-	mame_printf_info("Expansion: %8dm\n", (int)(expansion / 1000000));
 	mame_printf_info("Driver:    %8dm\n", (int)(driver_checks / 1000000));
 	mame_printf_info("ROM:       %8dm\n", (int)(rom_checks / 1000000));
 	mame_printf_info("CPU:       %8dm\n", (int)(cpu_checks / 1000000));
@@ -1244,5 +1312,7 @@ bool mame_validitychecks(const game_driver *curdriver)
 	mame_printf_info("Input:     %8dm\n", (int)(input_checks / 1000000));
 #endif
 
-	return error;
+	// on a general error, throw rather than return
+	if (error)
+		throw emu_fatalerror(MAMERR_FAILED_VALIDITY, "Validity checks failed");
 }

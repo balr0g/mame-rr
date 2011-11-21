@@ -4,34 +4,35 @@
 
 ***************************************************************************/
 
-class ddribble_state
+class ddribble_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, ddribble_state(machine)); }
-
-	ddribble_state(running_machine &machine) { }
+	ddribble_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *     sharedram;
-	UINT8 *     snd_sharedram;
-	UINT8 *     spriteram_1;
-	UINT8 *     spriteram_2;
-	UINT8 *     bg_videoram;
-	UINT8 *     fg_videoram;
-	UINT8 *     paletteram;
+	UINT8 *     m_sharedram;
+	UINT8 *     m_snd_sharedram;
+	UINT8 *     m_spriteram_1;
+	UINT8 *     m_spriteram_2;
+	UINT8 *     m_bg_videoram;
+	UINT8 *     m_fg_videoram;
+	UINT8 *     m_paletteram;
 
 	/* video-related */
-	tilemap_t     *fg_tilemap,*bg_tilemap;
-	int         vregs[2][5];
-	int         charbank[2];
+	tilemap_t     *m_fg_tilemap;
+	tilemap_t     *m_bg_tilemap;
+	int         m_vregs[2][5];
+	int         m_charbank[2];
 
 	/* misc */
-	int         int_enable_0, int_enable_1;
+	int         m_int_enable_0;
+	int         m_int_enable_1;
 
 	/* devices */
-	running_device *filter1;
-	running_device *filter2;
-	running_device *filter3;
+	device_t *m_filter1;
+	device_t *m_filter2;
+	device_t *m_filter3;
 };
 
 /*----------- defined in video/ddribble.c -----------*/
@@ -43,4 +44,4 @@ WRITE8_HANDLER( K005885_1_w );
 
 PALETTE_INIT( ddribble );
 VIDEO_START( ddribble );
-VIDEO_UPDATE( ddribble );
+SCREEN_UPDATE( ddribble );

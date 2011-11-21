@@ -38,7 +38,7 @@ Up to 4096 bytes can be addressed.
 
 #define VERBOSE_LEVEL ( 0 )
 
-INLINE void ATTR_PRINTF( 3, 4 ) verboselog( running_device *device, int n_level, const char *s_fmt, ... )
+INLINE void ATTR_PRINTF( 3, 4 ) verboselog( device_t *device, int n_level, const char *s_fmt, ... )
 {
 	if( VERBOSE_LEVEL >= n_level )
 	{
@@ -47,7 +47,7 @@ INLINE void ATTR_PRINTF( 3, 4 ) verboselog( running_device *device, int n_level,
 		va_start( v, s_fmt );
 		vsprintf( buf, s_fmt, v );
 		va_end( v );
-		logerror( "%s: I2CMEM(%s) %s", cpuexec_describe_context( device->machine ), device->tag(), buf );
+		logerror( "%s: I2CMEM(%s) %s", device->machine().describe_context( ), device->tag(), buf );
 	}
 }
 
@@ -55,25 +55,35 @@ INLINE void ATTR_PRINTF( 3, 4 ) verboselog( running_device *device, int n_level,
 //  GLOBAL VARIABLES
 //**************************************************************************
 
+// device type definition
+const device_type I2CMEM = &device_creator<i2cmem_device>;
 
-static ADDRESS_MAP_START( i2cmem_map8, ADDRESS_SPACE_PROGRAM, 8 )
+static ADDRESS_MAP_START( i2cmem_map8, AS_PROGRAM, 8 )
 	AM_RANGE(0x0000, 0x0fff) AM_RAM
 ADDRESS_MAP_END
 
 
 
 //**************************************************************************
-//  DEVICE CONFIGURATION
+//  LIVE DEVICE
 //**************************************************************************
 
 //-------------------------------------------------
-//  i2cmem_device_config - constructor
+//  i2cmem_device - constructor
 //-------------------------------------------------
 
-i2cmem_device_config::i2cmem_device_config( const machine_config &mconfig, const char *tag, const device_config *owner, UINT32 clock ) :
-	device_config( mconfig, static_alloc_device_config, "I2CMEM", tag, owner, clock),
-	device_config_memory_interface(mconfig, *this),
-	device_config_nvram_interface(mconfig, *this)
+i2cmem_device::i2cmem_device( const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock )
+	: device_t(mconfig, I2CMEM, "I2CMEM", tag, owner, clock),
+	  device_memory_interface(mconfig, *this),
+	  device_nvram_interface(mconfig, *this),
+	m_scl( 0 ),
+	m_sdaw( 0 ),
+	m_e0( 0 ),
+	m_e1( 0 ),
+	m_e2( 0 ),
+	m_wc( 0 ),
+	m_sdar( 1 ),
+	m_state( STATE_IDLE )
 {
 	m_address_bits = 0;
 
@@ -86,26 +96,15 @@ i2cmem_device_config::i2cmem_device_config( const machine_config &mconfig, const
 }
 
 
-
 //-------------------------------------------------
-//  static_alloc_device_config - allocate a new
-//  configuration object
+//  static_set_interface - set the device
+//  configuration
 //-------------------------------------------------
 
-device_config *i2cmem_device_config::static_alloc_device_config( const machine_config &mconfig, const char *tag, const device_config *owner, UINT32 clock )
+void i2cmem_device::static_set_interface(device_t &device, const i2cmem_interface &interface)
 {
-	return global_alloc( i2cmem_device_config( mconfig, tag, owner, clock ) );
-}
-
-
-
-//-------------------------------------------------
-//  alloc_device - allocate a new device object
-//-------------------------------------------------
-
-device_t *i2cmem_device_config::alloc_device( running_machine &machine ) const
-{
-	return auto_alloc( &machine, i2cmem_device( machine, *this ) );
+	i2cmem_device &i2cmem = downcast<i2cmem_device &>(device);
+	static_cast<i2cmem_interface &>(i2cmem) = interface;
 }
 
 
@@ -115,17 +114,8 @@ device_t *i2cmem_device_config::alloc_device( running_machine &machine ) const
 //  complete
 //-------------------------------------------------
 
-void i2cmem_device_config::device_config_complete()
+void i2cmem_device::device_config_complete()
 {
-	// extract inline configuration from raw data
-	const i2cmem_interface *intf = reinterpret_cast<const i2cmem_interface *>( m_inline_data[ INLINE_INTERFACE ] );
-
-	// inherit a copy of the static data
-	if( intf != NULL )
-	{
-		*static_cast<i2cmem_interface *>(this) = *intf;
-	}
-
 	m_space_config = address_space_config( "i2cmem", ENDIANNESS_BIG, 8,  m_address_bits, 0, *ADDRESS_MAP_NAME( i2cmem_map8 ) );
 }
 
@@ -135,58 +125,10 @@ void i2cmem_device_config::device_config_complete()
 //  on this device
 //-------------------------------------------------
 
-bool i2cmem_device_config::device_validity_check( const game_driver &driver ) const
+bool i2cmem_device::device_validity_check( emu_options &options, const game_driver &driver ) const
 {
 	bool error = false;
-
-	if( m_inline_data[ INLINE_INTERFACE ] == 0 )
-	{
-		mame_printf_error( "%s: %s i2cmem device '%s' did not specify an interface\n", driver.source_file, driver.name, tag() );
-		error = true;
-	}
-
 	return error;
-}
-
-
-//-------------------------------------------------
-//  memory_space_config - return a description of
-//  any address spaces owned by this device
-//-------------------------------------------------
-
-const address_space_config *i2cmem_device_config::memory_space_config( int spacenum ) const
-{
-	return ( spacenum == 0 ) ? &m_space_config : NULL;
-}
-
-
-
-//**************************************************************************
-//  LIVE DEVICE
-//**************************************************************************
-
-//-------------------------------------------------
-//  i2cmem_device - constructor
-//-------------------------------------------------
-
-i2cmem_device::i2cmem_device( running_machine &_machine, const i2cmem_device_config &config ) :
-	device_t( _machine, config ),
-	device_memory_interface( _machine, config, *this ),
-	device_nvram_interface( _machine, config, *this ),
-	m_config( config ),
-	m_scl( 0 ),
-	m_sdaw( 0 ),
-	m_e0( 0 ),
-	m_e1( 0 ),
-	m_e2( 0 ),
-	m_wc( 0 ),
-	m_sdar( 1 ),
-	m_state( STATE_IDLE )
-{
-	if( m_page_size > 0 )
-	{
-		m_page = auto_alloc_array( machine, UINT8, m_page_size );
-	}
 }
 
 
@@ -196,19 +138,24 @@ i2cmem_device::i2cmem_device( running_machine &_machine, const i2cmem_device_con
 
 void i2cmem_device::device_start()
 {
-	state_save_register_device_item( this, 0, m_scl );
-	state_save_register_device_item( this, 0, m_sdaw );
-	state_save_register_device_item( this, 0, m_e0 );
-	state_save_register_device_item( this, 0, m_e1 );
-	state_save_register_device_item( this, 0, m_e2 );
-	state_save_register_device_item( this, 0, m_wc );
-	state_save_register_device_item( this, 0, m_sdar );
-	state_save_register_device_item( this, 0, m_state );
-	state_save_register_device_item( this, 0, m_bits );
-	state_save_register_device_item( this, 0, m_shift );
-	state_save_register_device_item( this, 0, m_devsel );
-	state_save_register_device_item( this, 0, m_byteaddr );
-	state_save_register_device_item_pointer( this, 0, m_page, m_page_size );
+	if( m_page_size > 0 )
+	{
+		m_page = auto_alloc_array( machine(), UINT8, m_page_size );
+	}
+
+	save_item( NAME(m_scl) );
+	save_item( NAME(m_sdaw) );
+	save_item( NAME(m_e0) );
+	save_item( NAME(m_e1) );
+	save_item( NAME(m_e2) );
+	save_item( NAME(m_wc) );
+	save_item( NAME(m_sdar) );
+	save_item( NAME(m_state) );
+	save_item( NAME(m_bits) );
+	save_item( NAME(m_shift) );
+	save_item( NAME(m_devsel) );
+	save_item( NAME(m_byteaddr) );
+	save_pointer( NAME(m_page), m_page_size );
 }
 
 
@@ -222,18 +169,29 @@ void i2cmem_device::device_reset()
 
 
 //-------------------------------------------------
+//  memory_space_config - return a description of
+//  any address spaces owned by this device
+//-------------------------------------------------
+
+const address_space_config *i2cmem_device::memory_space_config( address_spacenum spacenum ) const
+{
+	return ( spacenum == 0 ) ? &m_space_config : NULL;
+}
+
+
+//-------------------------------------------------
 //  nvram_default - called to initialize NVRAM to
 //  its default state
 //-------------------------------------------------
 
 void i2cmem_device::nvram_default()
 {
-	int i2cmem_bytes = m_config.m_data_size;
+	int i2cmem_bytes = m_data_size;
 
 	UINT16 default_value = 0xff;
 	for( offs_t offs = 0; offs < i2cmem_bytes; offs++ )
 	{
-		memory_write_byte( m_addrspace[ 0 ], offs, default_value );
+		m_addrspace[ 0 ]->write_byte( offs, default_value );
 	}
 
 	/* populate from a memory region if present */
@@ -251,7 +209,7 @@ void i2cmem_device::nvram_default()
 
 		for( offs_t offs = 0; offs < i2cmem_bytes; offs++ )
 		{
-			memory_write_byte( m_addrspace[ 0 ], offs, m_region->u8( offs ) );
+			m_addrspace[ 0 ]->write_byte( offs, m_region->u8( offs ) );
 		}
 	}
 }
@@ -262,19 +220,19 @@ void i2cmem_device::nvram_default()
 //  .nv file
 //-------------------------------------------------
 
-void i2cmem_device::nvram_read( mame_file &file )
+void i2cmem_device::nvram_read( emu_file &file )
 {
-	int i2cmem_bytes = m_config.m_data_size;
-	UINT8 *buffer = auto_alloc_array( &m_machine, UINT8, i2cmem_bytes );
+	int i2cmem_bytes = m_data_size;
+	UINT8 *buffer = auto_alloc_array( machine(), UINT8, i2cmem_bytes );
 
-	mame_fread( &file, buffer, i2cmem_bytes );
+	file.read( buffer, i2cmem_bytes );
 
 	for( offs_t offs = 0; offs < i2cmem_bytes; offs++ )
 	{
-		memory_write_byte( m_addrspace[ 0 ], offs, buffer[ offs ] );
+		m_addrspace[ 0 ]->write_byte( offs, buffer[ offs ] );
 	}
 
-	auto_free( &m_machine, buffer );
+	auto_free( machine(), buffer );
 }
 
 //-------------------------------------------------
@@ -282,19 +240,19 @@ void i2cmem_device::nvram_read( mame_file &file )
 //  .nv file
 //-------------------------------------------------
 
-void i2cmem_device::nvram_write( mame_file &file )
+void i2cmem_device::nvram_write( emu_file &file )
 {
-	int i2cmem_bytes = m_config.m_data_size;
-	UINT8 *buffer = auto_alloc_array( &m_machine, UINT8, i2cmem_bytes );
+	int i2cmem_bytes = m_data_size;
+	UINT8 *buffer = auto_alloc_array( machine(), UINT8, i2cmem_bytes );
 
 	for( offs_t offs = 0; offs < i2cmem_bytes; offs++ )
 	{
-		buffer[ offs ] = memory_read_byte( m_addrspace[ 0 ], offs );
+		buffer[ offs ] = m_addrspace[ 0 ]->read_byte( offs );
 	}
 
-	mame_fwrite( &file, buffer, i2cmem_bytes );
+	file.write( buffer, i2cmem_bytes );
 
-	auto_free( &m_machine, buffer );
+	auto_free( machine(), buffer );
 }
 
 
@@ -370,7 +328,6 @@ void i2cmem_device::set_sda_line( int state )
 			{
 				verboselog( this, 1, "stop\n" );
 				m_state = STATE_IDLE;
-				m_byteaddr = 0;
 			}
 			else
 			{
@@ -383,7 +340,6 @@ void i2cmem_device::set_sda_line( int state )
 		}
 	}
 }
-
 
 WRITE_LINE_DEVICE_HANDLER( i2cmem_scl_write )
 {
@@ -465,7 +421,7 @@ void i2cmem_device::set_scl_line( int state )
 
 								for( int i = 0; i < m_page_size; i++ )
 								{
-									memory_write_byte( m_addrspace[ 0 ], offset + i, m_page[ i ] );
+									m_addrspace[ 0 ]->write_byte( offset + i, m_page[ i ] );
 								}
 
 								m_page_offset = 0;
@@ -476,7 +432,7 @@ void i2cmem_device::set_scl_line( int state )
 							int offset = data_offset();
 
 							verboselog( this, 1, "data[ %04x ] <- %02x\n", offset, m_shift );
-							memory_write_byte( m_addrspace[ 0 ], offset, m_shift );
+							m_addrspace[ 0 ]->write_byte( offset, m_shift );
 
 							m_byteaddr++;
 						}
@@ -509,7 +465,7 @@ void i2cmem_device::set_scl_line( int state )
 					{
 						int offset = data_offset();
 
-						m_shift = memory_read_byte( m_addrspace[ 0 ], offset );
+						m_shift = m_addrspace[ 0 ]->read_byte( offset );
 						verboselog( this, 1, "data[ %04x ] -> %02x\n", offset, m_shift );
 						m_byteaddr++;
 					}
@@ -574,7 +530,7 @@ READ_LINE_DEVICE_HANDLER( i2cmem_sda_read )
 
 int i2cmem_device::read_sda_line()
 {
-	int res = m_sdar & m_sdaw & 1;
+	int res = m_sdar & 1;
 
 	verboselog( this, 2, "read sda %d\n", res );
 
@@ -588,12 +544,12 @@ int i2cmem_device::read_sda_line()
 
 int i2cmem_device::address_mask()
 {
-	return ( 1 << m_config.m_address_bits ) - 1;
+	return (m_data_size - 1);
 }
 
 int i2cmem_device::select_device()
 {
-	int device = ( m_config.m_slave_address & 0xf0 ) | ( m_e2 << 3 ) | ( m_e1 << 2 ) | ( m_e0 << 1 );
+	int device = ( m_slave_address & 0xf0 ) | ( m_e2 << 3 ) | ( m_e1 << 2 ) | ( m_e0 << 1 );
 	int mask = DEVSEL_ADDRESS & ~( address_mask() >> 7 );
 
 	if( ( m_devsel & mask ) == ( device & mask ) )
@@ -608,5 +564,3 @@ int i2cmem_device::data_offset()
 {
 	return ( ( ( m_devsel << 7 ) & 0xff00 ) | ( m_byteaddr & 0xff ) ) & address_mask();
 }
-
-const device_type I2CMEM = i2cmem_device_config::static_alloc_device_config;

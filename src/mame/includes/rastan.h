@@ -4,29 +4,28 @@
 
 *************************************************************************/
 
-class rastan_state
+class rastan_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, rastan_state(machine)); }
-
-	rastan_state(running_machine &machine) { }
+	rastan_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
 //  UINT16 *    paletteram; // this currently uses generic palette handlers
 
 	/* video-related */
-	UINT16      sprite_ctrl;
-	UINT16      sprites_flipscreen;
+	UINT16      m_sprite_ctrl;
+	UINT16      m_sprites_flipscreen;
 
 	/* misc */
-	int         adpcm_pos;
-	int         adpcm_data;
+	int         m_adpcm_pos;
+	int         m_adpcm_data;
 
 	/* devices */
-	running_device *maincpu;
-	running_device *audiocpu;
-	running_device *pc090oj;
-	running_device *pc080sn;
+	device_t *m_maincpu;
+	device_t *m_audiocpu;
+	device_t *m_pc090oj;
+	device_t *m_pc080sn;
 };
 
 
@@ -34,4 +33,4 @@ public:
 
 WRITE16_HANDLER( rastan_spritectrl_w );
 
-VIDEO_UPDATE( rastan );
+SCREEN_UPDATE( rastan );

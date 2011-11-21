@@ -107,8 +107,7 @@ endif
 
 ifdef MSVC_BUILD
 
-VCONV = $(WINOBJ)/vconv$(EXE)
-VCONVPREFIX = $(subst /,\,$(VCONV))
+OSPREBUILD = $(VCONV_TARGET)
 
 # append a 'v' prefix if nothing specified
 ifndef PREFIX
@@ -116,10 +115,10 @@ PREFIX = v
 endif
 
 # replace the various compilers with vconv.exe prefixes
-CC = @$(VCONVPREFIX) gcc -I.
-LD = @$(VCONVPREFIX) ld /profile
-AR = @$(VCONVPREFIX) ar
-RC = @$(VCONVPREFIX) windres
+CC = @$(VCONV) gcc -I.
+LD = @$(VCONV) ld /profile
+AR = @$(VCONV) ar
+RC = @$(VCONV) windres
 
 # make sure we use the multithreaded runtime
 ifdef DEBUG
@@ -138,7 +137,12 @@ endif
 # disable warnings and link against bufferoverflowu for 64-bit targets
 ifeq ($(PTR64),1)
 CCOMFLAGS += /wd4267
-LIBS += -lbufferoverflowu
+#LIBS += -lbufferoverflowu
+endif
+
+# enable basic run-time checks in non-optimized build
+ifeq ($(OPTIMIZE),0)
+CCOMFLAGS += /RTC1
 endif
 
 # enable exception handling for C++
@@ -153,26 +157,17 @@ CPPONLYFLAGS += /wd4290 /wd4355
 # disable performance warnings about casting ints to bools
 CPPONLYFLAGS += /wd4800
 
+# disable better packing warning
+CPPONLYFLAGS += /wd4371
+
+# disable macro redefinition warning
+CCOMFLAGS += /wd4005
+
 # explicitly set the entry point for UNICODE builds
 LDFLAGS += /ENTRY:wmainCRTStartup
 
 # add some VC++-specific defines
 DEFS += -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE -DXML_STATIC -Dsnprintf=_snprintf
-
-# make msvcprep into a pre-build step
-OSPREBUILD = $(VCONV)
-
-ifneq ($(CROSS_BUILD),1)
-# add VCONV to the build tools
-BUILD += $(VCONV)
-
-$(VCONV): $(WINOBJ)/vconv.o
-	@echo Linking $@...
-	@link.exe /nologo $^ version.lib /out:$@
-
-$(WINOBJ)/vconv.o: $(WINSRC)/vconv.c
-	@echo Compiling $<...
-	@cl.exe /nologo /O1 -D_CRT_SECURE_NO_DEPRECATE -c $< /Fo$@
 
 OSDCLEAN = msvcclean
 
@@ -183,7 +178,28 @@ msvcclean:
 	$(RM) *.exp
 
 endif
+
+
+#-------------------------------------------------
+# build VCONV
+#-------------------------------------------------
+
+VCONV_TARGET = $(BUILDOUT)/vconv$(BUILD_EXE)
+VCONV = $(subst /,\,$(VCONV_TARGET))
+
+ifneq ($(CROSS_BUILD),1)
+BUILD += \
+	$(VCONV_TARGET)
 endif
+
+$(VCONV_TARGET): $(WINOBJ)/vconv.o
+	@echo Linking $@...
+	@gcc.exe -static-libgcc $^ $(LIBS) -lversion -o $@
+
+$(WINOBJ)/vconv.o: $(WINSRC)/vconv.c
+	@echo Compiling $<...
+	@gcc.exe -O3 -c $< -o $@
+
 
 
 #-------------------------------------------------
@@ -211,7 +227,7 @@ DEFS += -Dmain=utf8_main
 
 # debug build: enable guard pages on all memory allocations
 ifdef DEBUG
-#DEFS += -DMALLOC_DEBUG
+DEFS += -DMALLOC_DEBUG
 endif
 
 
@@ -232,7 +248,7 @@ endif
 LDFLAGS += -static-libgcc
 
 # add the windows libraries
-LIBS += -luser32 -lgdi32 -lddraw -ldsound -ldxguid -lwinmm -ladvapi32 -lcomctl32 -lshlwapi -ldinput8 -lcomdlg32 -llua51
+LIBS += -luser32 -lgdi32 -ldsound -ldxguid -lwinmm -ladvapi32 -lcomctl32 -lshlwapi -ldinput8 -lwsock32 -lcomdlg32 -llua51
 
 ifeq ($(DIRECTINPUT),8)
 LIBS += -ldinput8
@@ -242,7 +258,7 @@ LIBS += -ldinput
 CCOMFLAGS += -DDIRECTINPUT_VERSION=0x0700
 endif
 
-
+LIBS += -lcomdlg32
 
 #-------------------------------------------------
 # OSD core library
@@ -259,6 +275,7 @@ OSDCOREOBJS = \
 	$(WINOBJ)/winutf8.o \
 	$(WINOBJ)/winutil.o \
 	$(WINOBJ)/winclip.o \
+	$(WINOBJ)/winsocket.o \
 	$(WINOBJ)/winwork.o
 
 
@@ -270,6 +287,7 @@ OSDCOREOBJS = \
 OSDOBJS = \
 	$(WINOBJ)/d3d9intf.o \
 	$(WINOBJ)/drawd3d.o \
+	$(WINOBJ)/d3dhlsl.o \
 	$(WINOBJ)/drawdd.o \
 	$(WINOBJ)/drawgdi.o \
 	$(WINOBJ)/drawnone.o \
@@ -278,11 +296,18 @@ OSDOBJS = \
 	$(WINOBJ)/sound.o \
 	$(WINOBJ)/video.o \
 	$(WINOBJ)/window.o \
+	$(WINOBJ)/winmenu.o \
 	$(WINOBJ)/winmain.o \
 	$(WINOBJ)/luaconsole.o \
 	$(WINOBJ)/movie.o \
 	$(WINOBJ)/ram_search.o \
 	$(WINOBJ)/ramwatch.o
+
+ifdef USE_NETWORK
+OSDOBJS += \
+	$(WINOBJ)/netdev.o \
+	$(WINOBJ)/netdev_pcap.o
+endif
 
 ifeq ($(DIRECT3D),9)
 CCOMFLAGS += -DDIRECT3D_VERSION=0x0900

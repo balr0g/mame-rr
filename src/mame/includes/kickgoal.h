@@ -7,36 +7,39 @@
 #include "sound/okim6295.h"
 #include "machine/eeprom.h"
 
-class kickgoal_state
+class kickgoal_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, kickgoal_state(machine)); }
-
-	kickgoal_state(running_machine &machine)
-		: adpcm(machine.device<okim6295_device>("oki")),
-		  eeprom(machine.device<eeprom_device>("eeprom")) { }
+	kickgoal_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag),
+		  m_adpcm(*this, "oki"),
+		  m_eeprom(*this, "eeprom") { }
 
 	/* memory pointers */
-	UINT16 *    fgram;
-	UINT16 *    bgram;
-	UINT16 *    bg2ram;
-	UINT16 *    scrram;
-	UINT16 *    spriteram;
-//      UINT16 *    paletteram;    // currently this uses generic palette handling
-	size_t      spriteram_size;
+	UINT16 *    m_fgram;
+	UINT16 *    m_bgram;
+	UINT16 *    m_bg2ram;
+	UINT16 *    m_scrram;
+	UINT16 *    m_spriteram;
+//      UINT16 *    m_paletteram;    // currently this uses generic palette handling
+	size_t      m_spriteram_size;
 
 	/* video-related */
-	tilemap_t     *fgtm, *bgtm, *bg2tm;
+	tilemap_t     *m_fgtm;
+	tilemap_t     *m_bgtm;
+	tilemap_t     *m_bg2tm;
 
 	/* misc */
-	int         melody_loop;
-	int         snd_new, snd_sam[4];
-	int         m6295_comm, m6295_bank;
-	UINT16      m6295_key_delay;
+	int         m_melody_loop;
+	int         m_snd_new;
+	int         m_snd_sam[4];
+	int         m_m6295_comm;
+	int         m_m6295_bank;
+	UINT16      m_m6295_key_delay;
 
 	/* devices */
-	okim6295_device *adpcm;
-	eeprom_device *eeprom;
+	required_device<okim6295_device> m_adpcm;
+	required_device<eeprom_device> m_eeprom;
 };
 
 
@@ -47,7 +50,7 @@ WRITE16_HANDLER( kickgoal_bgram_w  );
 WRITE16_HANDLER( kickgoal_bg2ram_w );
 
 VIDEO_START( kickgoal );
-VIDEO_UPDATE( kickgoal );
+SCREEN_UPDATE( kickgoal );
 
 VIDEO_START( actionhw );
-VIDEO_UPDATE( actionhw );
+SCREEN_UPDATE( actionhw );

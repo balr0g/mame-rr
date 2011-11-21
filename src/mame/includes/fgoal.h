@@ -1,35 +1,37 @@
 
 
-class fgoal_state
+class fgoal_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, fgoal_state(machine)); }
-
-	fgoal_state(running_machine &machine) { }
+	fgoal_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *    video_ram;
+	UINT8 *    m_video_ram;
 
 	/* video-related */
-	bitmap_t   *bgbitmap, *fgbitmap;
-	UINT8      xpos, ypos;
-	int        current_color;
+	bitmap_t   *m_bgbitmap;
+	bitmap_t   *m_fgbitmap;
+	UINT8      m_xpos;
+	UINT8      m_ypos;
+	int        m_current_color;
 
 	/* misc */
-	int        fgoal_player;
-	UINT8      row, col;
-	int        prev_coin;
+	int        m_fgoal_player;
+	UINT8      m_row;
+	UINT8      m_col;
+	int        m_prev_coin;
 
 	/* devices */
-	running_device *maincpu;
-	running_device *mb14241;
+	device_t *m_maincpu;
+	device_t *m_mb14241;
 };
 
 
 /*----------- defined in video/fgoal.c -----------*/
 
 VIDEO_START( fgoal );
-VIDEO_UPDATE( fgoal );
+SCREEN_UPDATE( fgoal );
 
 WRITE8_HANDLER( fgoal_color_w );
 WRITE8_HANDLER( fgoal_xpos_w );

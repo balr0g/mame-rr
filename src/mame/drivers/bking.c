@@ -20,24 +20,25 @@ DIP Locations verified for:
 #include "cpu/m6805/m6805.h"
 #include "sound/ay8910.h"
 #include "sound/dac.h"
-#include "includes/buggychl.h"
+#include "machine/buggychl.h"
+#include "includes/bking.h"
 
 static READ8_HANDLER( bking_sndnmi_disable_r )
 {
-	buggychl_state *state = (buggychl_state *)space->machine->driver_data;
-	state->sound_nmi_enable = 0;
+	bking_state *state = space->machine().driver_data<bking_state>();
+	state->m_sound_nmi_enable = 0;
 	return 0;
 }
 
 static WRITE8_HANDLER( bking_sndnmi_enable_w )
 {
-	buggychl_state *state = (buggychl_state *)space->machine->driver_data;
-	state->sound_nmi_enable = 1;
+	bking_state *state = space->machine().driver_data<bking_state>();
+	state->m_sound_nmi_enable = 1;
 }
 
 static WRITE8_HANDLER( bking_soundlatch_w )
 {
-	buggychl_state *state = (buggychl_state *)space->machine->driver_data;
+	bking_state *state = space->machine().driver_data<bking_state>();
 	int i, code = 0;
 
 	for (i = 0;i < 8;i++)
@@ -45,30 +46,30 @@ static WRITE8_HANDLER( bking_soundlatch_w )
 			code |= 0x80 >> i;
 
 	soundlatch_w(space, offset, code);
-	if (state->sound_nmi_enable)
-		cpu_set_input_line(state->audiocpu, INPUT_LINE_NMI, PULSE_LINE);
+	if (state->m_sound_nmi_enable)
+		device_set_input_line(state->m_audiocpu, INPUT_LINE_NMI, PULSE_LINE);
 }
 
 static WRITE8_HANDLER( bking3_addr_l_w )
 {
-	buggychl_state *state = (buggychl_state *)space->machine->driver_data;
-	state->addr_l = data;
+	bking_state *state = space->machine().driver_data<bking_state>();
+	state->m_addr_l = data;
 }
 
 static WRITE8_HANDLER( bking3_addr_h_w )
 {
-	buggychl_state *state = (buggychl_state *)space->machine->driver_data;
-	state->addr_h = data;
+	bking_state *state = space->machine().driver_data<bking_state>();
+	state->m_addr_h = data;
 }
 
 static READ8_HANDLER( bking3_extrarom_r )
 {
-	buggychl_state *state = (buggychl_state *)space->machine->driver_data;
-	UINT8 *rom = memory_region(space->machine, "user2");
-	return rom[state->addr_h * 256 + state->addr_l];
+	bking_state *state = space->machine().driver_data<bking_state>();
+	UINT8 *rom = space->machine().region("user2")->base();
+	return rom[state->m_addr_h * 256 + state->m_addr_l];
 }
 
-static WRITE8_HANDLER( unk_w )
+static WRITE8_DEVICE_HANDLER( unk_w )
 {
 /*
     0 = finished reading extra rom
@@ -81,13 +82,13 @@ static READ8_HANDLER( bking3_ext_check_r )
 	return 0x31; //no "bad rom.", no "bad ext."
 }
 
-static ADDRESS_MAP_START( bking_map, ADDRESS_SPACE_PROGRAM, 8 )
+static ADDRESS_MAP_START( bking_map, AS_PROGRAM, 8 )
 	AM_RANGE(0x0000, 0x7fff) AM_ROM
 	AM_RANGE(0x8000, 0x83ff) AM_RAM
-	AM_RANGE(0x9000, 0x97ff) AM_RAM_WRITE(bking_playfield_w) AM_BASE_MEMBER(buggychl_state, playfield_ram)
+	AM_RANGE(0x9000, 0x97ff) AM_RAM_WRITE(bking_playfield_w) AM_BASE_MEMBER(bking_state, m_playfield_ram)
 ADDRESS_MAP_END
 
-static ADDRESS_MAP_START( bking_io_map, ADDRESS_SPACE_IO, 8 )
+static ADDRESS_MAP_START( bking_io_map, AS_IO, 8 )
 	ADDRESS_MAP_GLOBAL_MASK(0xff)
 	AM_RANGE(0x00, 0x00) AM_READ_PORT("IN0") AM_WRITE(bking_xld1_w)
 	AM_RANGE(0x01, 0x01) AM_READ_PORT("IN1") AM_WRITE(bking_yld1_w)
@@ -106,7 +107,7 @@ static ADDRESS_MAP_START( bking_io_map, ADDRESS_SPACE_IO, 8 )
 	AM_RANGE(0x07, 0x1f) AM_READ(bking_pos_r)
 ADDRESS_MAP_END
 
-static ADDRESS_MAP_START( bking3_io_map, ADDRESS_SPACE_IO, 8 )
+static ADDRESS_MAP_START( bking3_io_map, AS_IO, 8 )
 	ADDRESS_MAP_GLOBAL_MASK(0xff)
 	AM_RANGE(0x00, 0x00) AM_READ_PORT("IN0") AM_WRITE(bking_xld1_w)
 	AM_RANGE(0x01, 0x01) AM_READ_PORT("IN1") AM_WRITE(bking_yld1_w)
@@ -123,14 +124,14 @@ static ADDRESS_MAP_START( bking3_io_map, ADDRESS_SPACE_IO, 8 )
 //  AM_RANGE(0x0c, 0x0c) AM_WRITE(bking_eport2_w)   this is not shown to be connected anywhere
 	AM_RANGE(0x0d, 0x0d) AM_WRITE(bking_hitclr_w)
 	AM_RANGE(0x07, 0x1f) AM_READ(bking_pos_r)
-	AM_RANGE(0x2f, 0x2f) AM_READWRITE(buggychl_mcu_r, buggychl_mcu_w)
-	AM_RANGE(0x4f, 0x4f) AM_READWRITE(buggychl_mcu_status_r, unk_w)
+	AM_RANGE(0x2f, 0x2f) AM_DEVREADWRITE("bmcu", buggychl_mcu_r, buggychl_mcu_w)
+	AM_RANGE(0x4f, 0x4f) AM_DEVREADWRITE("bmcu", buggychl_mcu_status_r, unk_w)
 	AM_RANGE(0x60, 0x60) AM_READ(bking3_extrarom_r)
 	AM_RANGE(0x6f, 0x6f) AM_READWRITE(bking3_ext_check_r, bking3_addr_h_w)
 	AM_RANGE(0x8f, 0x8f) AM_WRITE(bking3_addr_l_w)
 ADDRESS_MAP_END
 
-static ADDRESS_MAP_START( bking_audio_map, ADDRESS_SPACE_PROGRAM, 8 )
+static ADDRESS_MAP_START( bking_audio_map, AS_PROGRAM, 8 )
 	AM_RANGE(0x0000, 0x1fff) AM_ROM
 	AM_RANGE(0x2000, 0x2fff) AM_ROM //only bking3
 	AM_RANGE(0x4000, 0x43ff) AM_RAM
@@ -144,60 +145,62 @@ static ADDRESS_MAP_START( bking_audio_map, ADDRESS_SPACE_PROGRAM, 8 )
 ADDRESS_MAP_END
 
 #if 0
-static UINT8 port_a_in,port_a_out,ddr_a;
-
 static READ8_HANDLER( bking3_68705_port_a_r )
 {
-	//printf("port_a_r = %02X\n",(port_a_out & ddr_a) | (port_a_in & ~ddr_a));
-	return (port_a_out & ddr_a) | (port_a_in & ~ddr_a);
+	bking_state *state = space->machine().driver_data<bking_state>();
+	//printf("port_a_r = %02X\n",(state->m_port_a_out & state->m_ddr_a) | (state->m_port_a_in & ~state->m_ddr_a));
+	return (state->m_port_a_out & state->m_ddr_a) | (state->m_port_a_in & ~state->m_ddr_a);
 }
 
 static WRITE8_HANDLER( bking3_68705_port_a_w )
 {
-	port_a_out = data;
+	bking_state *state = space->machine().driver_data<bking_state>();
+	state->m_port_a_out = data;
 //  printf("port_a_out = %02X\n",data);
 }
 
 static WRITE8_HANDLER( bking3_68705_ddr_a_w )
 {
-	ddr_a = data;
+	bking_state *state = space->machine().driver_data<bking_state>();
+	state->m_ddr_a = data;
 }
-
-static UINT8 port_b_in,port_b_out,ddr_b;
 
 static READ8_HANDLER( bking3_68705_port_b_r )
 {
-	return (port_b_out & ddr_b) | (port_b_in & ~ddr_b);
+	bking_state *state = space->machine().driver_data<bking_state>();
+	return (state->m_port_b_out & state->m_ddr_b) | (state->m_port_b_in & ~state->m_ddr_b);
 }
 
 static WRITE8_HANDLER( bking3_68705_port_b_w )
 {
+	bking_state *state = space->machine().driver_data<bking_state>();
 //  if(data != 0xff)
 //      printf("port_b_out = %02X\n",data);
 
 	if (~data & 0x02)
 	{
-		port_a_in = from_main;
-		if (main_sent) cputag_set_input_line(space->machine, "mcu", 0, CLEAR_LINE);
+		state->m_port_a_in = from_main;
+		if (main_sent) cputag_set_input_line(space->machine(), "mcu", 0, CLEAR_LINE);
 		main_sent = 0;
 	}
 
 	if (~data & 0x04)
 	{
 		/* 68705 is writing data for the Z80 */
-		from_mcu = port_a_out;
+		from_mcu = state->m_port_a_out;
 		mcu_sent = 1;
 	}
 
 	if(data != 0xff && data != 0xfb && data != 0xfd)
 		printf("port_b_w = %X\n",data);
 
-	port_b_out = data;
+	state->m_port_b_out = data;
 }
 
 static WRITE8_HANDLER( bking3_68705_ddr_b_w )
 {
-	ddr_b = data;
+	bking_state *state = space->machine().driver_data<bking_state>();
+	state->m_ddr_b = data;
 }
 
 static READ8_HANDLER( bking3_68705_port_c_r )
@@ -205,22 +208,10 @@ static READ8_HANDLER( bking3_68705_port_c_r )
 	int port_c_in = 0;
 	if (main_sent) port_c_in |= 0x01;
 	if (!mcu_sent) port_c_in |= 0x02;
-//logerror("%04x: 68705 port C read %02x\n",cpu_get_pc(space->cpu),port_c_in);
+//logerror("%04x: 68705 port C read %02x\n",cpu_get_pc(&space->device()),port_c_in);
 	return port_c_in;
 }
 #endif
-
-static ADDRESS_MAP_START( m68705_map, ADDRESS_SPACE_PROGRAM, 8 )
-	ADDRESS_MAP_GLOBAL_MASK(0x7ff)
-	AM_RANGE(0x0000, 0x0000) AM_READWRITE(buggychl_68705_port_a_r, buggychl_68705_port_a_w)
-	AM_RANGE(0x0001, 0x0001) AM_READWRITE(buggychl_68705_port_b_r, buggychl_68705_port_b_w)
-	AM_RANGE(0x0002, 0x0002) AM_READWRITE(buggychl_68705_port_c_r, buggychl_68705_port_c_w)
-	AM_RANGE(0x0004, 0x0004) AM_WRITE(buggychl_68705_ddr_a_w)
-	AM_RANGE(0x0005, 0x0005) AM_WRITE(buggychl_68705_ddr_b_w)
-	AM_RANGE(0x0006, 0x0006) AM_WRITE(buggychl_68705_ddr_c_w)
-	AM_RANGE(0x0010, 0x007f) AM_RAM
-	AM_RANGE(0x0080, 0x07ff) AM_ROM
-ADDRESS_MAP_END
 
 static INPUT_PORTS_START( bking )
 	PORT_START("IN0")
@@ -411,178 +402,145 @@ static const ay8910_interface ay8910_config =
 
 static MACHINE_START( bking )
 {
-	buggychl_state *state = (buggychl_state *)machine->driver_data;
+	bking_state *state = machine.driver_data<bking_state>();
 
-	state->audiocpu = machine->device("audiocpu");
+	state->m_audiocpu = machine.device("audiocpu");
 
 	/* video */
-	state_save_register_global_array(machine, state->pc3259_output);
-	state_save_register_global(machine, state->pc3259_mask);
-	state_save_register_global(machine, state->xld1);
-	state_save_register_global(machine, state->xld2);
-	state_save_register_global(machine, state->xld3);
-	state_save_register_global(machine, state->yld1);
-	state_save_register_global(machine, state->yld2);
-	state_save_register_global(machine, state->yld3);
-	state_save_register_global(machine, state->ball1_pic);
-	state_save_register_global(machine, state->ball2_pic);
-	state_save_register_global(machine, state->crow_pic);
-	state_save_register_global(machine, state->crow_flip);
-	state_save_register_global(machine, state->palette_bank);
-	state_save_register_global(machine, state->controller);
-	state_save_register_global(machine, state->hit);
+	state->save_item(NAME(state->m_pc3259_output));
+	state->save_item(NAME(state->m_pc3259_mask));
+	state->save_item(NAME(state->m_xld1));
+	state->save_item(NAME(state->m_xld2));
+	state->save_item(NAME(state->m_xld3));
+	state->save_item(NAME(state->m_yld1));
+	state->save_item(NAME(state->m_yld2));
+	state->save_item(NAME(state->m_yld3));
+	state->save_item(NAME(state->m_ball1_pic));
+	state->save_item(NAME(state->m_ball2_pic));
+	state->save_item(NAME(state->m_crow_pic));
+	state->save_item(NAME(state->m_crow_flip));
+	state->save_item(NAME(state->m_palette_bank));
+	state->save_item(NAME(state->m_controller));
+	state->save_item(NAME(state->m_hit));
 	/* sound */
-	state_save_register_global(machine, state->sound_nmi_enable);
+	state->save_item(NAME(state->m_sound_nmi_enable));
 }
 
 static MACHINE_START( bking3 )
 {
-	buggychl_state *state = (buggychl_state *)machine->driver_data;
-
-	state->mcu = machine->device("mcu");
+	bking_state *state = machine.driver_data<bking_state>();
 
 	MACHINE_START_CALL(bking);
 
 	/* misc */
-	state_save_register_global(machine, state->addr_h);
-	state_save_register_global(machine, state->addr_l);
+	state->save_item(NAME(state->m_addr_h));
+	state->save_item(NAME(state->m_addr_l));
 
-	/* mcu */
-	state_save_register_global(machine, state->from_main);
-	state_save_register_global(machine, state->from_mcu);
-	state_save_register_global(machine, state->mcu_sent);
-	state_save_register_global(machine, state->main_sent);
-	state_save_register_global(machine, state->port_a_in);
-	state_save_register_global(machine, state->port_a_out);
-	state_save_register_global(machine, state->ddr_a);
-	state_save_register_global(machine, state->port_b_in);
-	state_save_register_global(machine, state->port_b_out);
-	state_save_register_global(machine, state->ddr_b);
-	state_save_register_global(machine, state->port_c_in);
-	state_save_register_global(machine, state->port_c_out);
-	state_save_register_global(machine, state->ddr_c);
 }
 
 static MACHINE_RESET( bking )
 {
-	buggychl_state *state = (buggychl_state *)machine->driver_data;
+	bking_state *state = machine.driver_data<bking_state>();
 
 	/* video */
-	state->pc3259_output[0] = 0;
-	state->pc3259_output[1] = 0;
-	state->pc3259_output[2] = 0;
-	state->pc3259_output[3] = 0;
-	state->pc3259_mask = 0;
-	state->xld1 = 0;
-	state->xld2 = 0;
-	state->xld3 = 0;
-	state->yld1 = 0;
-	state->yld2 = 0;
-	state->yld3 = 0;
-	state->ball1_pic = 0;
-	state->ball2_pic = 0;
-	state->crow_pic = 0;
-	state->crow_flip = 0;
-	state->palette_bank = 0;
-	state->controller = 0;
-	state->hit = 0;
+	state->m_pc3259_output[0] = 0;
+	state->m_pc3259_output[1] = 0;
+	state->m_pc3259_output[2] = 0;
+	state->m_pc3259_output[3] = 0;
+	state->m_pc3259_mask = 0;
+	state->m_xld1 = 0;
+	state->m_xld2 = 0;
+	state->m_xld3 = 0;
+	state->m_yld1 = 0;
+	state->m_yld2 = 0;
+	state->m_yld3 = 0;
+	state->m_ball1_pic = 0;
+	state->m_ball2_pic = 0;
+	state->m_crow_pic = 0;
+	state->m_crow_flip = 0;
+	state->m_palette_bank = 0;
+	state->m_controller = 0;
+	state->m_hit = 0;
 	/* sound */
-	state->sound_nmi_enable = 1;
+	state->m_sound_nmi_enable = 1;
 }
 
 static MACHINE_RESET( bking3 )
 {
-	buggychl_state *state = (buggychl_state *)machine->driver_data;
+	bking_state *state = machine.driver_data<bking_state>();
 
 	cputag_set_input_line(machine, "mcu", 0, CLEAR_LINE);
 
 	MACHINE_RESET_CALL(bking);
 
 	/* misc */
-	state->addr_h = 0;
-	state->addr_l = 0;
-
-	/* mcu */
-	state->mcu_sent = 0;
-	state->main_sent = 0;
-	state->from_main = 0;
-	state->from_mcu = 0;
-	state->port_a_in = 0;
-	state->port_a_out = 0;
-	state->ddr_a = 0;
-	state->port_b_in = 0;
-	state->port_b_out = 0;
-	state->ddr_b = 0;
-	state->port_c_in = 0;
-	state->port_c_out = 0;
-	state->ddr_c = 0;
+	state->m_addr_h = 0;
+	state->m_addr_l = 0;
 }
 
-static MACHINE_DRIVER_START( bking )
-
-	/* driver data */
-	MDRV_DRIVER_DATA(buggychl_state)
+static MACHINE_CONFIG_START( bking, bking_state )
 
 	/* basic machine hardware */
-	MDRV_CPU_ADD("main_cpu", Z80, XTAL_12MHz/4)	/* 3 MHz */
-	MDRV_CPU_PROGRAM_MAP(bking_map)
-	MDRV_CPU_IO_MAP(bking_io_map)
-	MDRV_CPU_VBLANK_INT("screen", irq0_line_hold)
+	MCFG_CPU_ADD("main_cpu", Z80, XTAL_12MHz/4)	/* 3 MHz */
+	MCFG_CPU_PROGRAM_MAP(bking_map)
+	MCFG_CPU_IO_MAP(bking_io_map)
+	MCFG_CPU_VBLANK_INT("screen", irq0_line_hold)
 
-	MDRV_CPU_ADD("audiocpu", Z80, XTAL_6MHz/2)	/* 3 MHz */
-	MDRV_CPU_PROGRAM_MAP(bking_audio_map)
+	MCFG_CPU_ADD("audiocpu", Z80, XTAL_6MHz/2)	/* 3 MHz */
+	MCFG_CPU_PROGRAM_MAP(bking_audio_map)
 	/* interrupts (from Jungle King hardware, might be wrong): */
 	/* - no interrupts synced with vblank */
 	/* - NMI triggered by the main CPU */
 	/* - periodic IRQ, with frequency 6000000/(4*16*16*10*16) = 36.621 Hz, */
-	MDRV_CPU_PERIODIC_INT(irq0_line_hold, (double)6000000/(4*16*16*10*16))
+	MCFG_CPU_PERIODIC_INT(irq0_line_hold, (double)6000000/(4*16*16*10*16))
 
-	MDRV_MACHINE_START(bking)
-	MDRV_MACHINE_RESET(bking)
+	MCFG_MACHINE_START(bking)
+	MCFG_MACHINE_RESET(bking)
 
 	/* video hardware */
-	MDRV_SCREEN_ADD("screen", RASTER)
-	MDRV_SCREEN_REFRESH_RATE(60)
-	MDRV_SCREEN_VBLANK_TIME(ATTOSECONDS_IN_USEC(0))
-	MDRV_SCREEN_FORMAT(BITMAP_FORMAT_INDEXED16)
-	MDRV_SCREEN_SIZE(32*8, 32*8)
-	MDRV_SCREEN_VISIBLE_AREA(0*8, 32*8-1, 2*8, 30*8-1)
-	MDRV_GFXDECODE(bking)
-	MDRV_PALETTE_LENGTH(4*8+4*4+4*2+4*2)
+	MCFG_SCREEN_ADD("screen", RASTER)
+	MCFG_SCREEN_REFRESH_RATE(60)
+	MCFG_SCREEN_VBLANK_TIME(ATTOSECONDS_IN_USEC(0))
+	MCFG_SCREEN_FORMAT(BITMAP_FORMAT_INDEXED16)
+	MCFG_SCREEN_SIZE(32*8, 32*8)
+	MCFG_SCREEN_VISIBLE_AREA(0*8, 32*8-1, 2*8, 30*8-1)
+	MCFG_SCREEN_UPDATE(bking)
+	MCFG_SCREEN_EOF(bking)
 
-	MDRV_PALETTE_INIT(bking)
-	MDRV_VIDEO_START(bking)
-	MDRV_VIDEO_UPDATE(bking)
-	MDRV_VIDEO_EOF(bking)
+	MCFG_GFXDECODE(bking)
+	MCFG_PALETTE_LENGTH(4*8+4*4+4*2+4*2)
+
+	MCFG_PALETTE_INIT(bking)
+	MCFG_VIDEO_START(bking)
 
 	/* sound hardware */
-	MDRV_SPEAKER_STANDARD_MONO("mono")
+	MCFG_SPEAKER_STANDARD_MONO("mono")
 
-	MDRV_SOUND_ADD("ay1", AY8910, XTAL_6MHz/4)
-	MDRV_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
+	MCFG_SOUND_ADD("ay1", AY8910, XTAL_6MHz/4)
+	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
 
-	MDRV_SOUND_ADD("ay2", AY8910, XTAL_6MHz/4)
-	MDRV_SOUND_CONFIG(ay8910_config)
-	MDRV_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
+	MCFG_SOUND_ADD("ay2", AY8910, XTAL_6MHz/4)
+	MCFG_SOUND_CONFIG(ay8910_config)
+	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
 
-	MDRV_SOUND_ADD("dac", DAC, 0)
-	MDRV_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
-MACHINE_DRIVER_END
+	MCFG_SOUND_ADD("dac", DAC, 0)
+	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
+MACHINE_CONFIG_END
 
-static MACHINE_DRIVER_START( bking3 )
-	MDRV_IMPORT_FROM(bking)
+static MACHINE_CONFIG_DERIVED( bking3, bking )
 
-	MDRV_CPU_MODIFY("main_cpu")
-	MDRV_CPU_IO_MAP(bking3_io_map)
+	MCFG_CPU_MODIFY("main_cpu")
+	MCFG_CPU_IO_MAP(bking3_io_map)
 
-	MDRV_CPU_ADD("mcu", M68705, XTAL_3MHz)      /* xtal is 3MHz, divided by 4 internally */
-	MDRV_CPU_PROGRAM_MAP(m68705_map)
+	MCFG_CPU_ADD("mcu", M68705, XTAL_3MHz)      /* xtal is 3MHz, divided by 4 internally */
+	MCFG_CPU_PROGRAM_MAP(buggychl_mcu_map)
+	MCFG_DEVICE_ADD("bmcu", BUGGYCHL_MCU, 0)
 
-	MDRV_MACHINE_START(bking3)
-	MDRV_MACHINE_RESET(bking3)
+	MCFG_MACHINE_START(bking3)
+	MCFG_MACHINE_RESET(bking3)
 
-	MDRV_QUANTUM_TIME(HZ(6000))
-MACHINE_DRIVER_END
+	MCFG_QUANTUM_TIME(attotime::from_hz(6000))
+MACHINE_CONFIG_END
 
 /***************************************************************************
 

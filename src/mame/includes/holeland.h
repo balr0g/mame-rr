@@ -4,24 +4,23 @@
 
 *************************************************************************/
 
-class holeland_state
+class holeland_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, holeland_state(machine)); }
-
-	holeland_state(running_machine &machine) { }
+	holeland_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *    videoram;
-	UINT8 *    colorram;
-	UINT8 *    spriteram;
-	size_t     videoram_size;
-	size_t     spriteram_size;
+	UINT8 *    m_videoram;
+	UINT8 *    m_colorram;
+	UINT8 *    m_spriteram;
+	size_t     m_videoram_size;
+	size_t     m_spriteram_size;
 
 	/* video-related */
-	tilemap_t    *bg_tilemap;
-	int        palette_offset;
-	int        po[2];
+	tilemap_t    *m_bg_tilemap;
+	int        m_palette_offset;
+	int        m_po[2];
 };
 
 
@@ -29,8 +28,8 @@ public:
 
 VIDEO_START( holeland );
 VIDEO_START( crzrally );
-VIDEO_UPDATE( holeland );
-VIDEO_UPDATE( crzrally );
+SCREEN_UPDATE( holeland );
+SCREEN_UPDATE( crzrally );
 
 WRITE8_HANDLER( holeland_videoram_w );
 WRITE8_HANDLER( holeland_colorram_w );

@@ -6,43 +6,42 @@
 
 #include "machine/atarigen.h"
 
-class atarisy1_state
+class atarisy1_state : public atarigen_state
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, atarisy1_state(machine)); }
+	atarisy1_state(const machine_config &mconfig, device_type type, const char *tag)
+		: atarigen_state(mconfig, type, tag),
+		  m_joystick_timer(*this, "joystick_timer"),
+		  m_yscroll_reset_timer(*this, "yreset_timer"),
+		  m_scanline_timer(*this, "scan_timer"),
+		  m_int3off_timer(*this, "int3off_timer") { }
 
-	atarisy1_state(running_machine &machine)
-		: joystick_timer(machine.device<timer_device>("joystick_timer")),
-		  yscroll_reset_timer(machine.device<timer_device>("yreset_timer")),
-		  scanline_timer(machine.device<timer_device>("scan_timer")),
-		  int3off_timer(machine.device<timer_device>("int3off_timer")) { }
+	UINT16 *		m_bankselect;
 
-	atarigen_state	atarigen;
+	UINT8			m_joystick_type;
+	UINT8			m_trackball_type;
 
-	UINT16 *		bankselect;
-
-	UINT8			joystick_type;
-	UINT8			trackball_type;
-
-	timer_device *	joystick_timer;
-	UINT8			joystick_int;
-	UINT8			joystick_int_enable;
-	UINT8			joystick_value;
+	required_device<timer_device> m_joystick_timer;
+	UINT8			m_joystick_int;
+	UINT8			m_joystick_int_enable;
+	UINT8			m_joystick_value;
 
 	/* playfield parameters */
-	UINT16			playfield_lookup[256];
-	UINT8			playfield_tile_bank;
-	UINT16			playfield_priority_pens;
-	timer_device *	yscroll_reset_timer;
+	UINT16			m_playfield_lookup[256];
+	UINT8			m_playfield_tile_bank;
+	UINT16			m_playfield_priority_pens;
+	required_device<timer_device> m_yscroll_reset_timer;
 
 	/* INT3 tracking */
-	int 			next_timer_scanline;
-	timer_device *	scanline_timer;
-	timer_device *	int3off_timer;
+	int 			m_next_timer_scanline;
+	required_device<timer_device> m_scanline_timer;
+	required_device<timer_device> m_int3off_timer;
 
 	/* graphics bank tracking */
-	UINT8			bank_gfx[3][8];
-	UINT8			bank_color_shift[MAX_GFX_ELEMENTS];
+	UINT8			m_bank_gfx[3][8];
+	UINT8			m_bank_color_shift[MAX_GFX_ELEMENTS];
+
+	UINT8			m_cur[2][2];
 };
 
 
@@ -61,4 +60,4 @@ WRITE16_HANDLER( atarisy1_yscroll_w );
 WRITE16_HANDLER( atarisy1_priority_w );
 
 VIDEO_START( atarisy1 );
-VIDEO_UPDATE( atarisy1 );
+SCREEN_UPDATE( atarisy1 );

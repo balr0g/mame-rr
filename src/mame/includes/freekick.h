@@ -1,33 +1,34 @@
 
 
-class freekick_state
+class freekick_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, freekick_state(machine)); }
-
-	freekick_state(running_machine &machine) { }
+	freekick_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *    videoram;
-	UINT8 *    spriteram;
-	size_t     spriteram_size;
+	UINT8 *    m_videoram;
+	UINT8 *    m_spriteram;
+	size_t     m_spriteram_size;
 
 	/* video-related */
-	tilemap_t    *freek_tilemap;
+	tilemap_t    *m_freek_tilemap;
 
 	/* misc */
-	int        inval, outval, cnt;	// used by oigas
-	int        romaddr;
-	int        spinner;
-	int        nmi_en;
-	int        ff_data;
+	int        m_inval;
+	int        m_outval;
+	int        m_cnt;	// used by oigas
+	int        m_romaddr;
+	int        m_spinner;
+	int        m_nmi_en;
+	int        m_ff_data;
 };
 
 
 /*----------- defined in video/freekick.c -----------*/
 
 VIDEO_START(freekick);
-VIDEO_UPDATE(gigas);
-VIDEO_UPDATE(pbillrd);
-VIDEO_UPDATE(freekick);
+SCREEN_UPDATE(gigas);
+SCREEN_UPDATE(pbillrd);
+SCREEN_UPDATE(freekick);
 WRITE8_HANDLER( freek_videoram_w );

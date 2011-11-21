@@ -6,18 +6,15 @@
 
 #include "machine/atarigen.h"
 
-class vindictr_state
+class vindictr_state : public atarigen_state
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, vindictr_state(machine)); }
+	vindictr_state(const machine_config &mconfig, device_type type, const char *tag)
+		: atarigen_state(mconfig, type, tag) { }
 
-	vindictr_state(running_machine &machine) { }
-
-	atarigen_state	atarigen;
-
-	UINT8			playfield_tile_bank;
-	UINT16			playfield_xscroll;
-	UINT16			playfield_yscroll;
+	UINT8			m_playfield_tile_bank;
+	UINT16			m_playfield_xscroll;
+	UINT16			m_playfield_yscroll;
 };
 
 
@@ -26,6 +23,6 @@ public:
 WRITE16_HANDLER( vindictr_paletteram_w );
 
 VIDEO_START( vindictr );
-VIDEO_UPDATE( vindictr );
+SCREEN_UPDATE( vindictr );
 
 void vindictr_scanline_update(screen_device &screen, int scanline);

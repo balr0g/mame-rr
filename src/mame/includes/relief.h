@@ -6,22 +6,19 @@
 
 #include "machine/atarigen.h"
 
-class relief_state
+class relief_state : public atarigen_state
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, relief_state(machine)); }
+	relief_state(const machine_config &mconfig, device_type type, const char *tag)
+		: atarigen_state(mconfig, type, tag) { }
 
-	relief_state(running_machine &machine) { }
-
-	atarigen_state	atarigen;
-
-	UINT8			ym2413_volume;
-	UINT8			overall_volume;
-	UINT32			adpcm_bank_base;
+	UINT8			m_ym2413_volume;
+	UINT8			m_overall_volume;
+	UINT32			m_adpcm_bank_base;
 };
 
 
 /*----------- defined in video/relief.c -----------*/
 
 VIDEO_START( relief );
-VIDEO_UPDATE( relief );
+SCREEN_UPDATE( relief );

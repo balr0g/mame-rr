@@ -4,25 +4,24 @@
 
 *************************************************************************/
 
-class gyruss_state
+class gyruss_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, gyruss_state(machine)); }
-
-	gyruss_state(running_machine &machine) { }
+	gyruss_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *    videoram;
-	UINT8 *    colorram;
-	UINT8 *    spriteram;
-	UINT8 *    flipscreen;
+	UINT8 *    m_videoram;
+	UINT8 *    m_colorram;
+	UINT8 *    m_spriteram;
+	UINT8 *    m_flipscreen;
 
 	/* video-related */
-	tilemap_t    *tilemap;
+	tilemap_t    *m_tilemap;
 
 	/* devices */
-	cpu_device *audiocpu;
-	cpu_device *audiocpu_2;
+	cpu_device *m_audiocpu;
+	cpu_device *m_audiocpu_2;
 };
 
 
@@ -33,4 +32,4 @@ READ8_HANDLER( gyruss_scanline_r );
 
 PALETTE_INIT( gyruss );
 VIDEO_START( gyruss );
-VIDEO_UPDATE( gyruss );
+SCREEN_UPDATE( gyruss );

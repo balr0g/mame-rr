@@ -40,13 +40,24 @@
 //============================================================
 
 #include "osdcore.h"
+#include <stdlib.h>
 
 
 //============================================================
-//  osd_alloc
+//  osd_malloc
 //============================================================
 
-void *osd_alloc(size_t size)
+void *osd_malloc(size_t size)
+{
+	return malloc(size);
+}
+
+
+//============================================================
+//  osd_malloc_array
+//============================================================
+
+void *osd_malloc_array(size_t size)
 {
 	return malloc(size);
 }
@@ -91,4 +102,26 @@ void osd_free_executable(void *ptr, size_t size)
 void osd_break_into_debugger(const char *message)
 {
 	// there is no standard way to do this, so ignore it
+}
+
+
+//============================================================
+//  osd_get_clipboard_text
+//============================================================
+
+char *osd_get_clipboard_text(void)
+{
+	// can't support clipboards generically
+	return NULL;
+}
+
+
+//============================================================
+//  osd_get_slider_list
+//============================================================
+
+const void *osd_get_slider_list()
+{
+	// nothing to slide in mini OSD
+	return NULL;
 }

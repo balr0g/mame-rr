@@ -1,17 +1,16 @@
-class xyonix_state
+class xyonix_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, xyonix_state(machine)); }
+	xyonix_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
-	xyonix_state(running_machine &machine) { }
+	UINT8 *m_vidram;
+	tilemap_t *m_tilemap;
 
-	UINT8 *vidram;
-	tilemap_t *tilemap;
-
-	int e0_data;
-	int credits;
-	int coins;
-	int prev_coin;
+	int m_e0_data;
+	int m_credits;
+	int m_coins;
+	int m_prev_coin;
 };
 
 
@@ -20,4 +19,4 @@ public:
 PALETTE_INIT( xyonix );
 WRITE8_HANDLER( xyonix_vidram_w );
 VIDEO_START(xyonix);
-VIDEO_UPDATE(xyonix);
+SCREEN_UPDATE(xyonix);

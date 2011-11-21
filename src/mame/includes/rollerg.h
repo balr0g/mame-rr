@@ -4,34 +4,34 @@
 
 *************************************************************************/
 
-class rollerg_state
+class rollerg_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, rollerg_state(machine)); }
-
-	rollerg_state(running_machine &machine) { }
+	rollerg_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-//  UINT8 *    paletteram;    // currently this uses generic palette handling
+//  UINT8 *    m_paletteram;    // currently this uses generic palette handling
 
 	/* video-related */
-	int        sprite_colorbase, zoom_colorbase;
+	int        m_sprite_colorbase;
+	int        m_zoom_colorbase;
 
 	/* misc */
-	int        readzoomroms;
+	int        m_readzoomroms;
 
 	/* devices */
-	running_device *maincpu;
-	running_device *audiocpu;
-	running_device *k053260;
-	running_device *k053244;
-	running_device *k051316;
+	device_t *m_maincpu;
+	device_t *m_audiocpu;
+	device_t *m_k053260;
+	device_t *m_k053244;
+	device_t *m_k051316;
 };
 
 /*----------- defined in video/rollerg.c -----------*/
 
-extern void rollerg_sprite_callback(running_machine *machine, int *code,int *color,int *priority_mask);
-extern void rollerg_zoom_callback(running_machine *machine, int *code,int *color,int *flags);
+extern void rollerg_sprite_callback(running_machine &machine, int *code,int *color,int *priority_mask);
+extern void rollerg_zoom_callback(running_machine &machine, int *code,int *color,int *flags);
 
 VIDEO_START( rollerg );
-VIDEO_UPDATE( rollerg );
+SCREEN_UPDATE( rollerg );

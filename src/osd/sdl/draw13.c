@@ -7,10 +7,6 @@
 //
 //  SDLMAME by Olivier Galibert and R. Belmont
 //
-//  Note: D3D9 goes to a lot of trouble to fiddle with MODULATE
-//        mode on textures.  That is the default in OpenGL so we
-//        don't have to touch it.
-//
 //============================================================
 
 // standard C headers
@@ -109,11 +105,11 @@ struct _texture_info
 	int					pitch;
 	int					pixels_own;			// do we own / allocated it ?
 
-	SDL_TextureID		texture_id;
+	SDL_Texture			*texture_id;
 
 	copy_info			*copyinfo;
 	Uint32				sdl_access;
-	Uint32				sdl_blendmode;
+	SDL_BlendMode		sdl_blendmode;
 	quad_setup_data		setup;
 	int					is_rotated;
 
@@ -127,12 +123,19 @@ struct _sdl_info
 	INT32			blittimer;
 	UINT32			extra_flags;
 
+	SDL_Renderer	*sdl_renderer;
 	texture_info *	texlist;				// list of active textures
 	INT32			texture_max_width;  	// texture maximum width
 	INT32			texture_max_height; 	// texture maximum height
 
 	float			last_hofs;
 	float			last_vofs;
+
+	// resize information
+
+	UINT8			resize_pending;
+	UINT32			resize_width;
+	UINT32			resize_height;
 
 	// Stats
 	INT64			last_blit_time;
@@ -151,7 +154,7 @@ static int draw13_window_create(sdl_window_info *window, int width, int height);
 static void draw13_window_resize(sdl_window_info *window, int width, int height);
 static void draw13_window_destroy(sdl_window_info *window);
 static int draw13_window_draw(sdl_window_info *window, UINT32 dc, int update);
-static const render_primitive_list *draw13_window_get_primitives(sdl_window_info *window);
+static render_primitive_list &draw13_window_get_primitives(sdl_window_info *window);
 static void draw13_destroy_all_textures(sdl_window_info *window);
 static void draw13_window_clear(sdl_window_info *window);
 static int draw13_xy_to_render_target(sdl_window_info *window, int x, int y, int *xt, int *yt);
@@ -308,7 +311,7 @@ INLINE HashT texture_compute_hash(const render_texinfo *texture, UINT32 flags)
 	return (HashT)texture->base ^ (flags & (PRIMFLAG_BLENDMODE_MASK | PRIMFLAG_TEXFORMAT_MASK));
 }
 
-INLINE Uint32 map_blendmode(int blendmode)
+INLINE SDL_BlendMode map_blendmode(int blendmode)
 {
 	switch (blendmode)
 	{
@@ -326,7 +329,7 @@ INLINE Uint32 map_blendmode(int blendmode)
 	return SDL_BLENDMODE_NONE;
 }
 
-INLINE void set_coloralphamode(SDL_TextureID texture_id, const render_color *color)
+INLINE void set_coloralphamode(SDL_Texture	*texture_id, const render_color *color)
 {
 	UINT32 sr = (UINT32)(255.0f * color->r);
 	UINT32 sg = (UINT32)(255.0f * color->g);
@@ -360,7 +363,7 @@ INLINE void set_coloralphamode(SDL_TextureID texture_id, const render_color *col
 
 INLINE void render_quad(sdl_info *sdl, texture_info *texture, render_primitive *prim, int x, int y)
 {
-	SDL_TextureID texture_id;
+	SDL_Texture	*texture_id;
 	SDL_Rect target_rect;
 
 	target_rect.x = x;
@@ -373,17 +376,19 @@ INLINE void render_quad(sdl_info *sdl, texture_info *texture, render_primitive *
 		texture_id = texture->texture_id;
 
 		texture->copyinfo->time -= osd_ticks();
+#if 0
 		if ((PRIMFLAG_GET_SCREENTEX(prim->flags)) && video_config.filter)
 		{
-			SDL_SetTextureScaleMode(texture->texture_id,  SDL_TEXTURESCALEMODE_BEST);
+			SDL_SetTextureScaleMode(texture->texture_id,  SDL_SCALEMODE_BEST);
 		}
 		else
 		{
-			SDL_SetTextureScaleMode(texture->texture_id,  SDL_TEXTURESCALEMODE_FAST);
+			SDL_SetTextureScaleMode(texture->texture_id,  SDL_SCALEMODE_NONE);
 		}
+#endif
 		SDL_SetTextureBlendMode(texture_id, texture->sdl_blendmode);
 		set_coloralphamode(texture_id, &prim->color);
-		SDL_RenderCopy(texture_id, NULL, &target_rect);
+		SDL_RenderCopy(sdl->sdl_renderer,  texture_id, NULL, &target_rect);
 		texture->copyinfo->time += osd_ticks();
 
 		texture->copyinfo->pixel_count += MAX(STAT_PIXEL_THRESHOLD , (texture->rawwidth * texture->rawheight));
@@ -401,9 +406,9 @@ INLINE void render_quad(sdl_info *sdl, texture_info *texture, render_primitive *
 		UINT32 sb = (UINT32)(255.0f * prim->color.b);
 		UINT32 sa = (UINT32)(255.0f * prim->color.a);
 
-		SDL_SetRenderDrawBlendMode(map_blendmode(PRIMFLAG_GET_BLENDMODE(prim->flags)));
-		SDL_SetRenderDrawColor(sr, sg, sb, sa);
-		SDL_RenderFillRect(&target_rect);
+		SDL_SetRenderDrawBlendMode(sdl->sdl_renderer, map_blendmode(PRIMFLAG_GET_BLENDMODE(prim->flags)));
+		SDL_SetRenderDrawColor(sdl->sdl_renderer, sr, sg, sb, sa);
+		SDL_RenderFillRect(sdl->sdl_renderer, &target_rect);
 	}
 }
 
@@ -424,10 +429,10 @@ static int RendererSupportsFormat(Uint32 format, Uint32 access, const char *sfor
 	return 0;
 }
 #else
-static int RendererSupportsFormat(Uint32 format, Uint32 access, const char *sformat)
+static int RendererSupportsFormat(SDL_Renderer *renderer, Uint32 format, Uint32 access, const char *sformat)
 {
 	int i;
-	SDL_TextureID texid;
+	SDL_Texture *texid;
 	for (i=0; fmt_support[i].format != 0; i++)
 	{
 		if (format == fmt_support[i].format)
@@ -438,7 +443,7 @@ static int RendererSupportsFormat(Uint32 format, Uint32 access, const char *sfor
 	/* not tested yet */
 	fmt_support[i].format = format;
 	fmt_support[i + 1].format = 0;
-	texid = SDL_CreateTexture(format, access, 16, 16);
+	texid = SDL_CreateTexture(renderer, format, access, 16, 16);
 	if (texid)
 	{
 		fmt_support[i].status = 1;
@@ -484,7 +489,7 @@ static void expand_copy_info(copy_info *list)
 	}
 }
 
-int draw13_init(sdl_draw_info *callbacks)
+int draw13_init(running_machine &machine, sdl_draw_info *callbacks)
 {
 	const char *stemp;
 
@@ -501,7 +506,7 @@ int draw13_init(sdl_draw_info *callbacks)
 
 	// Load the GL library now - else MT will fail
 
-	stemp = options_get_string(mame_options(), SDLOPTION_GL_LIB);
+	stemp = downcast<sdl_options &>(machine.options()).gl_lib();
 	if (stemp != NULL && strcmp(stemp, SDLOPTVAL_AUTO) == 0)
 		stemp = NULL;
 
@@ -561,7 +566,6 @@ static int draw13_window_create(sdl_window_info *window, int width, int height)
 {
 	// allocate memory for our structures
 	sdl_info *sdl = (sdl_info *) osd_malloc(sizeof(*sdl));
-	int result;
 
 	mame_printf_verbose("Enter draw13_window_create\n");
 
@@ -570,15 +574,13 @@ static int draw13_window_create(sdl_window_info *window, int width, int height)
 	window->dxdata = sdl;
 
 	sdl->extra_flags = (window->fullscreen ?
-			SDL_WINDOW_BORDERLESS | SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_FULLSCREEN: SDL_WINDOW_RESIZABLE);
+			SDL_WINDOW_BORDERLESS | SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_FULLSCREEN : SDL_WINDOW_RESIZABLE);
 
 	// create the SDL window
-	SDL_SelectVideoDisplay(window->monitor->handle);
-
 	if (window->fullscreen && video_config.switchres)
 	{
 		SDL_DisplayMode mode;
-		SDL_GetCurrentDisplayMode(&mode);
+		SDL_GetCurrentDisplayMode(window->monitor->handle, &mode);
 		mode.w = width;
 		mode.h = height;
 		if (window->refresh)
@@ -608,27 +610,28 @@ static int draw13_window_create(sdl_window_info *window, int width, int height)
 	else
 		SDL_SetWindowDisplayMode(window->sdl_window, NULL);	// Use desktop
 
-	window->sdl_window = SDL_CreateWindow(window->title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+	window->sdl_window = SDL_CreateWindow(window->title, SDL_WINDOWPOS_UNDEFINED_DISPLAY(window->monitor->handle), SDL_WINDOWPOS_UNDEFINED,
 			width, height, sdl->extra_flags);
+
+	// create renderer
+
+	if (video_config.waitvsync)
+		sdl->sdl_renderer = SDL_CreateRenderer(window->sdl_window, -1, /*SDL_RENDERER_PRESENTFLIP2 | SDL_RENDERER_PRESENTDISCARD | */SDL_RENDERER_PRESENTVSYNC);
+	else
+		sdl->sdl_renderer = SDL_CreateRenderer(window->sdl_window, -1, /*SDL_RENDERER_PRESENTFLIP2 | SDL_RENDERER_PRESENTDISCARD*/ 0);
+
+	if (!sdl->sdl_renderer)
+	{
+		fatalerror("Error on creating renderer: %s \n", SDL_GetError());
+	}
+
+    //SDL_SelectRenderer(window->sdl_window);
 
 	SDL_ShowWindow(window->sdl_window);
 	//SDL_SetWindowFullscreen(window->window_id, window->fullscreen);
 	SDL_RaiseWindow(window->sdl_window);
 	SDL_GetWindowSize(window->sdl_window, &window->width, &window->height);
 
-	// create renderer
-
-	if (video_config.waitvsync)
-		result = SDL_CreateRenderer(window->sdl_window, -1, SDL_RENDERER_PRESENTFLIP2 | SDL_RENDERER_PRESENTDISCARD | SDL_RENDERER_PRESENTVSYNC);
-	else
-		result = SDL_CreateRenderer(window->sdl_window, -1, SDL_RENDERER_PRESENTFLIP2 | SDL_RENDERER_PRESENTDISCARD);
-
-	if (result)
-	{
-		fatalerror("Error on creating renderer: %s \n", SDL_GetError());
-	}
-
-    SDL_SelectRenderer(window->sdl_window);
 
 	sdl->blittimer = 3;
 
@@ -637,6 +640,7 @@ static int draw13_window_create(sdl_window_info *window, int width, int height)
 	sdl->texture_max_width = 64;
 	sdl->texture_max_height = 64;
 
+	SDL_RenderPresent(sdl->sdl_renderer);
 	mame_printf_verbose("Leave draw13_window_create\n");
 	return 0;
 }
@@ -649,8 +653,13 @@ static void draw13_window_resize(sdl_window_info *window, int width, int height)
 {
 	sdl_info *sdl = (sdl_info *) window->dxdata;
 
-	SDL_SetWindowSize(window->sdl_window, width, height);
-	SDL_GetWindowSize(window->sdl_window, &window->width, &window->height);
+	sdl->resize_pending = 1;
+	sdl->resize_height = height;
+	sdl->resize_width = width;
+
+	window->width = width;
+	window->height = height;
+
 	sdl->blittimer = 3;
 
 }
@@ -676,7 +685,7 @@ static int draw13_xy_to_render_target(sdl_window_info *window, int x, int y, int
 //  draw13_window_get_primitives
 //============================================================
 
-static const render_primitive_list *draw13_window_get_primitives(sdl_window_info *window)
+static render_primitive_list &draw13_window_get_primitives(sdl_window_info *window)
 {
 	if ((!window->fullscreen) || (video_config.switchres))
 	{
@@ -686,8 +695,8 @@ static const render_primitive_list *draw13_window_get_primitives(sdl_window_info
 	{
 		sdlwindow_blit_surface_size(window, window->monitor->center_width, window->monitor->center_height);
 	}
-	render_target_set_bounds(window->target, window->blitwidth, window->blitheight, sdlvideo_monitor_get_aspect(window->monitor));
-	return render_target_get_primitives(window->target);
+	window->target->set_bounds(window->blitwidth, window->blitheight, sdlvideo_monitor_get_aspect(window->monitor));
+	return window->target->get_primitives();
 }
 
 //============================================================
@@ -707,14 +716,22 @@ static int draw13_window_draw(sdl_window_info *window, UINT32 dc, int update)
 		return 0;
 	}
 
-	SDL_SelectRenderer(window->sdl_window);
+    if (sdl->resize_pending)
+	{
+		SDL_SetWindowSize(window->sdl_window, sdl->resize_width, sdl->resize_height);
+		SDL_GetWindowSize(window->sdl_window, &window->width, &window->height);
+		sdl->resize_pending = 0;
+	}
+
+    //SDL_SelectRenderer(window->sdl_window);
 
 	if (sdl->blittimer > 0)
 	{
 		/* SDL Underlays need alpha = 0 ! */
-		SDL_SetRenderDrawBlendMode(SDL_BLENDMODE_NONE);
-		SDL_SetRenderDrawColor(0,0,0,0 /*255*/);
-		SDL_RenderFillRect(NULL);
+		SDL_SetRenderDrawBlendMode(sdl->sdl_renderer, SDL_BLENDMODE_NONE);
+		//SDL_SetRenderDrawColor(0,0,0,255);
+		SDL_SetRenderDrawColor(sdl->sdl_renderer, 0,0,0,0);
+		SDL_RenderFillRect(sdl->sdl_renderer, NULL);
 		sdl->blittimer--;
 	}
 
@@ -749,27 +766,27 @@ static int draw13_window_draw(sdl_window_info *window, UINT32 dc, int update)
 	sdl->last_hofs = hofs;
 	sdl->last_vofs = vofs;
 
-	osd_lock_acquire(window->primlist->lock);
+	window->primlist->acquire_lock();
 
 	// now draw
-	for (prim = window->primlist->head; prim != NULL; prim = prim->next)
+	for (prim = window->primlist->first(); prim != NULL; prim = prim->next())
 	{
 		Uint8 sr, sg, sb, sa;
 
 		switch (prim->type)
 		{
-			case RENDER_PRIMITIVE_LINE:
+			case render_primitive::LINE:
 				sr = (int)(255.0f * prim->color.r);
 				sg = (int)(255.0f * prim->color.g);
 				sb = (int)(255.0f * prim->color.b);
 				sa = (int)(255.0f * prim->color.a);
 
-				SDL_SetRenderDrawBlendMode(map_blendmode(PRIMFLAG_GET_BLENDMODE(prim->flags)));
-				SDL_SetRenderDrawColor(sr, sg, sb, sa);
-				SDL_RenderDrawLine(prim->bounds.x0 + hofs, prim->bounds.y0 + vofs,
+				SDL_SetRenderDrawBlendMode(sdl->sdl_renderer, map_blendmode(PRIMFLAG_GET_BLENDMODE(prim->flags)));
+				SDL_SetRenderDrawColor(sdl->sdl_renderer, sr, sg, sb, sa);
+				SDL_RenderDrawLine(sdl->sdl_renderer, prim->bounds.x0 + hofs, prim->bounds.y0 + vofs,
 						prim->bounds.x1 + hofs, prim->bounds.y1 + vofs);
 				break;
-			case RENDER_PRIMITIVE_QUAD:
+			case render_primitive::QUAD:
 				texture = texture_update(window, prim);
 				if (texture)
 					blit_pixels += (texture->rawheight * texture->rawwidth);
@@ -777,14 +794,16 @@ static int draw13_window_draw(sdl_window_info *window, UINT32 dc, int update)
 						round_nearest(hofs + prim->bounds.x0),
 						round_nearest(vofs + prim->bounds.y0));
 				break;
+			default:
+				throw emu_fatalerror("Unexpected render_primitive type");
 		}
 	}
 
-	osd_lock_release(window->primlist->lock);
+	window->primlist->release_lock();
 
 	sdl->last_blit_pixels = blit_pixels;
 	sdl->last_blit_time = -osd_ticks();
-	SDL_RenderPresent();
+	SDL_RenderPresent(sdl->sdl_renderer);
 	sdl->last_blit_time += osd_ticks();
 
 	return 0;
@@ -833,7 +852,7 @@ static void draw13_window_destroy(sdl_window_info *window)
 //  texture_compute_size and type
 //============================================================
 
-static copy_info *texture_compute_size_type(const render_texinfo *texsource, texture_info *texture, UINT32 flags)
+static copy_info *texture_compute_size_type(SDL_Renderer *renderer, const render_texinfo *texsource, texture_info *texture, UINT32 flags)
 {
 	copy_info *bi;
 	copy_info *result = NULL;
@@ -845,7 +864,7 @@ static copy_info *texture_compute_size_type(const render_texinfo *texsource, tex
 		if ((texture->is_rotated == bi->rotate)
 				&& (texture->sdl_blendmode == bi->bm_mask))
 		{
-			if (RendererSupportsFormat(bi->dst_fmt, texture->sdl_access, bi->dstname))
+			if (RendererSupportsFormat(renderer, bi->dst_fmt, texture->sdl_access, bi->dstname))
 			{
 				if (bi->perf == 0)
 					return bi;
@@ -864,7 +883,7 @@ static copy_info *texture_compute_size_type(const render_texinfo *texsource, tex
 	{
 		if ((texture->is_rotated == bi->rotate)
 			&& (texture->sdl_blendmode == bi->bm_mask))
-			if (RendererSupportsFormat(bi->dst_fmt, texture->sdl_access, bi->dstname))
+			if (RendererSupportsFormat(renderer, bi->dst_fmt, texture->sdl_access, bi->dstname))
 				return bi;
 	}
 	//FIXME: crash implement a -do nothing handler */
@@ -934,9 +953,9 @@ static texture_info *texture_create(sdl_window_info *window, const render_texinf
 		mame_printf_warning("Trying to create texture with zero dim\n");
 
 	// compute the size
-	texture->copyinfo = texture_compute_size_type(texsource, texture, flags);
+	texture->copyinfo = texture_compute_size_type(sdl->sdl_renderer, texsource, texture, flags);
 
-	texture->texture_id = SDL_CreateTexture(texture->copyinfo->dst_fmt, texture->sdl_access,
+	texture->texture_id = SDL_CreateTexture(sdl->sdl_renderer, texture->copyinfo->dst_fmt, texture->sdl_access,
 			texture->setup.rotwidth, texture->setup.rotheight);
 
 	if (!texture->texture_id)
@@ -945,7 +964,7 @@ static texture_info *texture_create(sdl_window_info *window, const render_texinf
 
 	if ( (texture->copyinfo->func != NULL) && (texture->sdl_access == SDL_TEXTUREACCESS_STATIC))
 	{
-		texture->pixels = osd_malloc(texture->setup.rotwidth * texture->setup.rotheight * texture->copyinfo->dst_bpp);
+		texture->pixels = osd_malloc_array(texture->setup.rotwidth * texture->setup.rotheight * texture->copyinfo->dst_bpp);
 	 texture->pixels_own=TRUE;
  }
 	/* add us to the texture list */
@@ -980,7 +999,7 @@ static void texture_set_data(sdl_info *sdl, texture_info *texture, const render_
 	}
 	else
 	{
-		SDL_LockTexture(texture->texture_id, NULL, 1, (void **) &texture->pixels, &texture->pitch);
+		SDL_LockTexture(texture->texture_id, NULL, (void **) &texture->pixels, &texture->pitch);
 		if ( texture->copyinfo->func )
 			texture->copyinfo->func(texture, texsource);
 		else
@@ -1072,7 +1091,7 @@ static texture_info *texture_find(sdl_info *sdl, const render_primitive *prim, q
 			/* would we choose another blitter ? */
 			if ((texture->copyinfo->samples & 0x1f) == 0x1f)
 			{
-				if (texture->copyinfo != texture_compute_size_type(&texture->texinfo, texture, prim->flags))
+				if (texture->copyinfo != texture_compute_size_type(sdl->sdl_renderer, &texture->texinfo, texture, prim->flags))
 					return NULL;
 #if 0
 				else
@@ -1164,10 +1183,10 @@ static void draw13_destroy_all_textures(sdl_window_info *window)
 	if (sdl == NULL)
 		return;
 
-	if(window->primlist && window->primlist->lock)
+	if(window->primlist)
 	{
 		lock=TRUE;
-		osd_lock_acquire(window->primlist->lock);
+		window->primlist->acquire_lock();
 	}
 
 	texture = sdl->texlist;
@@ -1180,5 +1199,5 @@ static void draw13_destroy_all_textures(sdl_window_info *window)
 	}
 
 	if (lock)
-		osd_lock_release(window->primlist->lock);
+		window->primlist->release_lock();
 }

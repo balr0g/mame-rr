@@ -5,24 +5,23 @@
 
 *************************************************************************/
 
-class galspnbl_state
+class galspnbl_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, galspnbl_state(machine)); }
-
-	galspnbl_state(running_machine &machine) { }
+	galspnbl_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT16 *    videoram;
-	UINT16 *    bgvideoram;
-	UINT16 *    colorram;
-	UINT16 *    scroll;
-	UINT16 *    spriteram;
+	UINT16 *    m_videoram;
+	UINT16 *    m_bgvideoram;
+	UINT16 *    m_colorram;
+	UINT16 *    m_scroll;
+	UINT16 *    m_spriteram;
 //  UINT16 *    paletteram; // currently this uses generic palette handling
-	size_t      spriteram_size;
+	size_t      m_spriteram_size;
 
 	/* devices */
-	running_device *audiocpu;
+	device_t *m_audiocpu;
 };
 
 
@@ -30,4 +29,4 @@ public:
 
 
 PALETTE_INIT( galspnbl );
-VIDEO_UPDATE( galspnbl );
+SCREEN_UPDATE( galspnbl );

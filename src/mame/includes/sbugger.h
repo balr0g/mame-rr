@@ -1,21 +1,20 @@
-class sbugger_state
+class sbugger_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, sbugger_state(machine)); }
+	sbugger_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
-	sbugger_state(running_machine &machine) { }
+	UINT8 *m_videoram;
+	UINT8 *m_videoram_attr;
 
-	UINT8 *videoram;
-	UINT8 *videoram_attr;
-
-	tilemap_t *tilemap;
+	tilemap_t *m_tilemap;
 };
 
 
 /*----------- defined in video/sbugger.c -----------*/
 
 PALETTE_INIT(sbugger);
-VIDEO_UPDATE(sbugger);
+SCREEN_UPDATE(sbugger);
 VIDEO_START(sbugger);
 WRITE8_HANDLER( sbugger_videoram_attr_w );
 WRITE8_HANDLER( sbugger_videoram_w );

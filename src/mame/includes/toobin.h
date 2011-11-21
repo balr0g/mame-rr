@@ -6,19 +6,16 @@
 
 #include "machine/atarigen.h"
 
-class toobin_state
+class toobin_state : public atarigen_state
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, toobin_state(machine)); }
+	toobin_state(const machine_config &mconfig, device_type type, const char *tag)
+		: atarigen_state(mconfig, type, tag) { }
 
-	toobin_state(running_machine &machine) { }
+	UINT16 *		m_interrupt_scan;
 
-	atarigen_state	atarigen;
-
-	UINT16 *		interrupt_scan;
-
-	double			brightness;
-	bitmap_t *		pfbitmap;
+	double			m_brightness;
+	bitmap_t *		m_pfbitmap;
 };
 
 
@@ -31,4 +28,4 @@ WRITE16_HANDLER( toobin_yscroll_w );
 WRITE16_HANDLER( toobin_slip_w );
 
 VIDEO_START( toobin );
-VIDEO_UPDATE( toobin );
+SCREEN_UPDATE( toobin );

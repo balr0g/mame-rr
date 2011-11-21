@@ -1,5 +1,4 @@
 #include "emu.h"
-#include "streams.h"
 #include "tms36xx.h"
 
 #define VERBOSE 1
@@ -341,10 +340,10 @@ static const int *const tunes[] = {NULL,tune1,tune2,tune3,tune4};
 	}
 
 
-INLINE tms_state *get_safe_token(running_device *device)
+INLINE tms_state *get_safe_token(device_t *device)
 {
 	assert(device != NULL);
-	assert(device->type() == SOUND_TMS36XX);
+	assert(device->type() == TMS36XX);
 	return (tms_state *)downcast<legacy_device_base *>(device)->token();
 }
 
@@ -409,7 +408,7 @@ static void tms36xx_reset_counters(tms_state *tms)
 	memset(tms->counter, 0, sizeof(tms->counter));
 }
 
-void mm6221aa_tune_w(running_device *device, int tune)
+void mm6221aa_tune_w(device_t *device, int tune)
 {
 	tms_state *tms = get_safe_token(device);
 
@@ -421,14 +420,14 @@ void mm6221aa_tune_w(running_device *device, int tune)
 	LOG(("%s tune:%X\n", tms->subtype, tune));
 
     /* update the stream before changing the tune */
-    stream_update(tms->channel);
+    tms->channel->update();
 
     tms->tune_num = tune;
     tms->tune_ofs = 0;
     tms->tune_max = 96; /* fixed for now */
 }
 
-void tms36xx_note_w(running_device *device, int octave, int note)
+void tms36xx_note_w(device_t *device, int octave, int note)
 {
 	tms_state *tms = get_safe_token(device);
 
@@ -441,7 +440,7 @@ void tms36xx_note_w(running_device *device, int octave, int note)
 	LOG(("%s octave:%X note:%X\n", tms->subtype, octave, note));
 
 	/* update the stream before changing the tune */
-    stream_update(tms->channel);
+    tms->channel->update();
 
 	/* play a single note from 'tune 4', a list of the 13 tones */
 	tms36xx_reset_counters(tms);
@@ -461,7 +460,7 @@ static void tms3617_enable(tms_state *tms, int enable)
 		return;
 
     /* update the stream before changing the tune */
-    stream_update(tms->channel);
+    tms->channel->update();
 
 	LOG(("%s enable voices", tms->subtype));
     for (i = 0; i < 6; i++)
@@ -487,7 +486,7 @@ static void tms3617_enable(tms_state *tms, int enable)
 	LOG(("%s\n", bits ? "" : " none"));
 }
 
-void tms3617_enable_w(running_device *device, int enable)
+void tms3617_enable_w(device_t *device, int enable)
 {
 	tms_state *tms = get_safe_token(device);
 	tms3617_enable(tms, enable);
@@ -499,9 +498,9 @@ static DEVICE_START( tms36xx )
 	tms_state *tms = get_safe_token(device);
 	int enable;
 
-	tms->intf = (const tms36xx_interface *)device->baseconfig().static_config();
+	tms->intf = (const tms36xx_interface *)device->static_config();
 
-   tms->channel = stream_create(device, 0, 1, device->clock() * 64, tms, tms36xx_sound_update);
+   tms->channel = device->machine().sound().stream_alloc(*device, 0, 1, device->clock() * 64, tms, tms36xx_sound_update);
 	tms->samplerate = device->clock() * 64;
 	tms->basefreq = device->clock();
 	enable = 0;

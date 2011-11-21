@@ -1,20 +1,19 @@
-class spbactn_state
+class spbactn_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, spbactn_state(machine)); }
+	spbactn_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
-	spbactn_state(running_machine &machine) { }
+	UINT16 *m_bgvideoram;
+	UINT16 *m_fgvideoram;
+	UINT16 *m_spvideoram;
 
-	UINT16 *bgvideoram;
-	UINT16 *fgvideoram;
-	UINT16 *spvideoram;
-
-	bitmap_t *tile_bitmap_bg;
-	bitmap_t *tile_bitmap_fg;
+	bitmap_t *m_tile_bitmap_bg;
+	bitmap_t *m_tile_bitmap_fg;
 };
 
 
 /*----------- defined in video/spbactn.c -----------*/
 
 VIDEO_START( spbactn );
-VIDEO_UPDATE( spbactn );
+SCREEN_UPDATE( spbactn );

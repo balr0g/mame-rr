@@ -6,25 +6,22 @@
 
 #include "machine/atarigen.h"
 
-class offtwall_state
+class offtwall_state : public atarigen_state
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, offtwall_state(machine)); }
+	offtwall_state(const machine_config &mconfig, device_type type, const char *tag)
+		: atarigen_state(mconfig, type, tag) { }
 
-	offtwall_state(running_machine &machine) { }
+	UINT16 *m_bankswitch_base;
+	UINT16 *m_bankrom_base;
+	UINT32 m_bank_offset;
 
-	atarigen_state	atarigen;
-
-	UINT16 *bankswitch_base;
-	UINT16 *bankrom_base;
-	UINT32 bank_offset;
-
-	UINT16 *spritecache_count;
-	UINT16 *unknown_verify_base;
+	UINT16 *m_spritecache_count;
+	UINT16 *m_unknown_verify_base;
 };
 
 
 /*----------- defined in video/offtwall.c -----------*/
 
 VIDEO_START( offtwall );
-VIDEO_UPDATE( offtwall );
+SCREEN_UPDATE( offtwall );

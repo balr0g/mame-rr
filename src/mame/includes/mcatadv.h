@@ -1,37 +1,38 @@
 
-class mcatadv_state
+class mcatadv_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, mcatadv_state(machine)); }
-
-	mcatadv_state(running_machine &machine) { }
+	mcatadv_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT16 *     videoram1;
-	UINT16 *     videoram2;
-	UINT16 *     scroll1;
-	UINT16 *     scroll2;
-	UINT16 *     spriteram;
-	UINT16 *     spriteram_old;
-	UINT16 *     vidregs;
-	UINT16 *     vidregs_old;
-//  UINT16 *     paletteram;    // this currently uses generic palette handlers
-	size_t       spriteram_size;
+	UINT16 *     m_videoram1;
+	UINT16 *     m_videoram2;
+	UINT16 *     m_scroll1;
+	UINT16 *     m_scroll2;
+	UINT16 *     m_spriteram;
+	UINT16 *     m_spriteram_old;
+	UINT16 *     m_vidregs;
+	UINT16 *     m_vidregs_old;
+//  UINT16 *     m_paletteram;    // this currently uses generic palette handlers
+	size_t       m_spriteram_size;
 
 	/* video-related */
-	tilemap_t    *tilemap1,  *tilemap2;
-	int palette_bank1, palette_bank2;
+	tilemap_t    *m_tilemap1;
+	tilemap_t    *m_tilemap2;
+	int m_palette_bank1;
+	int m_palette_bank2;
 
 	/* devices */
-	running_device *maincpu;
-	running_device *soundcpu;
+	device_t *m_maincpu;
+	device_t *m_soundcpu;
 };
 
 /*----------- defined in video/mcatadv.c -----------*/
 
-VIDEO_UPDATE( mcatadv );
+SCREEN_UPDATE( mcatadv );
 VIDEO_START( mcatadv );
-VIDEO_EOF( mcatadv );
+SCREEN_EOF( mcatadv );
 
 WRITE16_HANDLER( mcatadv_videoram1_w );
 WRITE16_HANDLER( mcatadv_videoram2_w );

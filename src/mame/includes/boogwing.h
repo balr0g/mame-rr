@@ -6,35 +6,39 @@
 
 #include "sound/okim6295.h"
 #include "video/deco16ic.h"
+#include "video/decocomn.h"
 
-class boogwing_state
+class boogwing_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, boogwing_state(machine)); }
-
-	boogwing_state(running_machine &machine)
-		: maincpu(machine.device<cpu_device>("maincpu")),
-		  audiocpu(machine.device<cpu_device>("audiocpu")),
-		  deco16ic(machine.device<deco16ic_device>("deco_custom")),
-		  oki1(machine.device<okim6295_device>("oki1")),
-		  oki2(machine.device<okim6295_device>("oki2")) { }
+	boogwing_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag),
+		  m_maincpu(*this, "maincpu"),
+		  m_audiocpu(*this, "audiocpu"),
+		  m_decocomn(*this, "deco_common"),
+		  m_deco_tilegen1(*this, "tilegen1"),
+		  m_deco_tilegen2(*this, "tilegen2"),
+		  m_oki1(*this, "oki1"),
+		  m_oki2(*this, "oki2") { }
 
 	/* memory pointers */
-	UINT16 *  pf1_rowscroll;
-	UINT16 *  pf2_rowscroll;
-	UINT16 *  pf3_rowscroll;
-	UINT16 *  pf4_rowscroll;
+	UINT16 *  m_pf1_rowscroll;
+	UINT16 *  m_pf2_rowscroll;
+	UINT16 *  m_pf3_rowscroll;
+	UINT16 *  m_pf4_rowscroll;
 
 	/* devices */
-	cpu_device *maincpu;
-	cpu_device *audiocpu;
-	deco16ic_device *deco16ic;
-	okim6295_device *oki1;
-	okim6295_device *oki2;
+	required_device<cpu_device> m_maincpu;
+	required_device<cpu_device> m_audiocpu;
+	required_device<decocomn_device> m_decocomn;
+	required_device<deco16ic_device> m_deco_tilegen1;
+	required_device<deco16ic_device> m_deco_tilegen2;
+	required_device<okim6295_device> m_oki1;
+	required_device<okim6295_device> m_oki2;
 };
 
 
 /*----------- defined in video/boogwing.c -----------*/
 
-VIDEO_UPDATE( boogwing );
+SCREEN_UPDATE( boogwing );
 

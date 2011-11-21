@@ -47,7 +47,7 @@
 
     do
     {
-        debugger_instruction_hook(cpustate->device, R15);
+        debugger_instruction_hook(cpustate->device, GET_PC);
 
         /* handle Thumb instructions if active */
         if (T_IS_SET(GET_CPSR))
@@ -57,12 +57,19 @@
             INT32 offs;
 
             pc = R15;
-	    raddr = pc & (~1);
+
+			// "In Thumb state, bit [0] is undefined and must be ignored. Bits [31:1] contain the PC."
+			raddr = pc & (~1);
+
 	    if ( COPRO_CTRL & COPRO_CTRL_MMU_EN )
 	    {
-	    	raddr = arm7_tlb_translate(cpustate, raddr);
+	    	raddr = arm7_tlb_translate(cpustate, raddr, ARM7_TLB_ABORT_P);
+	    	if (cpustate->pendingAbtP != 0)
+	    	{
+	    		goto skip_exec;
+	    	}
 	    }
-            insn = memory_decrypted_read_word(cpustate->program, raddr);
+            insn = cpustate->direct->read_decrypted_word(raddr);
             ARM7_ICOUNT -= (3 - thumbCycles[insn >> 8]);
             switch ((insn & THUMB_INSN_TYPE) >> THUMB_INSN_TYPE_SHIFT)
             {
@@ -573,6 +580,13 @@
                                 case 0x2: /* MOV */
                                     switch ((insn & THUMB_HIREG_H) >> THUMB_HIREG_H_SHIFT)
                                     {
+                                        case 0x0:       // MOV Rd, Rs (undefined)
+                                            // "The action of H1 = 0, H2 = 0 for Op = 00 (ADD), Op = 01 (CMP) and Op = 10 (MOV) is undefined, and should not be used."
+                                            rs = (insn & THUMB_HIREG_RS) >> THUMB_HIREG_RS_SHIFT;
+                                            rd = insn & THUMB_HIREG_RD;
+                                            SET_REGISTER(cpustate, rd, GET_REGISTER(cpustate, rs));
+                                            R15 += 2;
+                                            break;
                                         case 0x1:       // MOV Rd, Hs
                                             rs = (insn & THUMB_HIREG_RS) >> THUMB_HIREG_RS_SHIFT;
                                             rd = insn & THUMB_HIREG_RD;
@@ -929,7 +943,14 @@
                         UINT32 ld_st_address;
 
                         rd = (insn & THUMB_MULTLS_BASE) >> THUMB_MULTLS_BASE_SHIFT;
-                        ld_st_address = GET_REGISTER(cpustate, rd) & 0xfffffffc;
+
+                        // "The address should normally be a word aligned quantity and non-word aligned addresses do not affect the instruction."
+                        // "However, the bottom 2 bits of the address will appear on A[1:0] and might be interpreted by the memory system."
+
+                        // GBA "BB Ball" performs an unaligned read with A[1:0] = 2 and expects A[1] not to be ignored [BP 800B90A,(R4&3)!=0]
+                        // GBA "Gadget Racers" performs an unaligned read with A[1:0] = 1 and expects A[0] to be ignored [BP B72,(R0&3)!=0]
+
+                        ld_st_address = GET_REGISTER(cpustate, rd);
 
                         if (insn & THUMB_MULTLS) /* Load */
                         {
@@ -940,7 +961,7 @@
                             {
                                 if (insn & (1 << offs))
                                 {
-                                    SET_REGISTER(cpustate, offs, READ32(ld_st_address));
+                                    SET_REGISTER(cpustate, offs, READ32(ld_st_address & ~1));
                                     ld_st_address += 4;
                                 }
                             }
@@ -954,7 +975,7 @@
                             {
                                 if (insn & (1 << offs))
                                 {
-                                    WRITE32(ld_st_address, GET_REGISTER(cpustate, offs));
+                                    WRITE32(ld_st_address & ~3, GET_REGISTER(cpustate, offs));
                                     ld_st_address += 4;
                                 }
                             }
@@ -1139,7 +1160,7 @@
                 case 0xf: /* BL */
                     if (insn & THUMB_BLOP_LO)
                     {
-                        addr = GET_REGISTER(cpustate, 14);
+                        addr = GET_REGISTER(cpustate, 14) & ~1;
                         addr += (insn & THUMB_BLOP_OFFS) << 1;
                         SET_REGISTER(cpustate, 14, (R15 + 2) | 1);
                         R15 = addr;
@@ -1165,14 +1186,34 @@
         }
         else
         {
+			UINT32 raddr;
 
             /* load 32 bit instruction */
-            pc = R15;
+            pc = GET_PC;
+
+			// "In ARM state, bits [1:0] of r15 are undefined and must be ignored. Bits [31:2] contain the PC."
+			raddr = pc & (~3);
+
 	    if ( COPRO_CTRL & COPRO_CTRL_MMU_EN )
 	    {
-	    	pc = arm7_tlb_translate(cpustate, pc);
+	    	raddr = arm7_tlb_translate(cpustate, raddr, ARM7_TLB_ABORT_P);
+	    	if (cpustate->pendingAbtP != 0)
+	    	{
+	    		goto skip_exec;
+	    	}
 	    }
-            insn = memory_decrypted_read_dword(cpustate->program, pc);
+
+#if 0
+			if (MODE26)
+			{
+				UINT32 temp1, temp2;
+				temp1 = GET_CPSR & 0xF00000C3;
+				temp2 = (R15 & 0xF0000000) | ((R15 & 0x0C000000) >> (26 - 6)) | (R15 & 0x00000003);
+				if (temp1 != temp2) fatalerror( "%08X: 32-bit and 26-bit modes are out of sync (%08X %08X)", pc, temp1, temp2);
+			}
+#endif
+
+            insn = cpustate->direct->read_decrypted_dword(raddr);
 
             /* process condition codes for this instruction */
             switch (insn >> INSN_COND_SHIFT)
@@ -1596,6 +1637,8 @@
                         ARM7_ICOUNT +=2;    //Any unexecuted instruction only takes 1 cycle (page 193)
             }
         }
+
+skip_exec:
 
         ARM7_CHECKIRQ;
 

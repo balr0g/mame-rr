@@ -18,18 +18,21 @@
 
 
 #include "emu.h"
-
-static tilemap_t *bg_tilemap;
+#include "includes/gatron.h"
 
 
 WRITE8_HANDLER( gat_videoram_w )
 {
-	space->machine->generic.videoram.u8[offset] = data;
-	tilemap_mark_tile_dirty(bg_tilemap, offset);
+	gatron_state *state = space->machine().driver_data<gatron_state>();
+	UINT8 *videoram = state->m_videoram;
+	videoram[offset] = data;
+	tilemap_mark_tile_dirty(state->m_bg_tilemap, offset);
 }
 
 static TILE_GET_INFO( get_bg_tile_info )
 {
+	gatron_state *state = machine.driver_data<gatron_state>();
+	UINT8 *videoram = state->m_videoram;
 /*  - bits -
     7654 3210
     xxxx xxxx   tiles code.
@@ -37,19 +40,21 @@ static TILE_GET_INFO( get_bg_tile_info )
     only one color code
 */
 
-	int code = machine->generic.videoram.u8[tile_index];
+	int code = videoram[tile_index];
 
 	SET_TILE_INFO(0, code, 0, 0);
 }
 
 VIDEO_START( gat )
 {
-	bg_tilemap = tilemap_create(machine, get_bg_tile_info, tilemap_scan_cols, 8, 16, 48, 16);
+	gatron_state *state = machine.driver_data<gatron_state>();
+	state->m_bg_tilemap = tilemap_create(machine, get_bg_tile_info, tilemap_scan_cols, 8, 16, 48, 16);
 }
 
-VIDEO_UPDATE( gat )
+SCREEN_UPDATE( gat )
 {
-	tilemap_draw(bitmap, cliprect, bg_tilemap, 0, 0);
+	gatron_state *state = screen->machine().driver_data<gatron_state>();
+	tilemap_draw(bitmap, cliprect, state->m_bg_tilemap, 0, 0);
 	return 0;
 }
 

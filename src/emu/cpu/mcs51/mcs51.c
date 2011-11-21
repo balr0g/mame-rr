@@ -285,9 +285,10 @@ struct _mcs51_state_t
 	legacy_cpu_device *device;
 
 	/* Memory spaces */
-    const address_space *program;
-    const address_space *data;
-    const address_space *io;
+    address_space *program;
+    direct_read_data *direct;
+    address_space *data;
+    address_space *io;
 
 	/* Serial Port TX/RX Callbacks */
 	// TODO: Move to special port r/w
@@ -310,15 +311,15 @@ struct _mcs51_state_t
 ***************************************************************************/
 
 /* Read Opcode/Opcode Arguments from Program Code */
-#define ROP(pc)			memory_decrypted_read_byte(mcs51_state->program, pc)
-#define ROP_ARG(pc)		memory_raw_read_byte(mcs51_state->program, pc)
+#define ROP(pc)			mcs51_state->direct->read_decrypted_byte(pc)
+#define ROP_ARG(pc)		mcs51_state->direct->read_raw_byte(pc)
 
 /* Read a byte from External Code Memory (Usually Program Rom(s) Space) */
-#define CODEMEM_R(a)	(UINT8)memory_read_byte_8le(mcs51_state->program, a)
+#define CODEMEM_R(a)	(UINT8)mcs51_state->program->read_byte(a)
 
 /* Read/Write a byte from/to External Data Memory (Usually RAM or other I/O) */
-#define DATAMEM_R(a)	(UINT8)memory_read_byte_8le(mcs51_state->io, a)
-#define DATAMEM_W(a,v)	memory_write_byte_8le(mcs51_state->io, a, v)
+#define DATAMEM_R(a)	(UINT8)mcs51_state->io->read_byte(a)
+#define DATAMEM_W(a,v)	mcs51_state->io->write_byte(a, v)
 
 /* Read/Write a byte from/to the Internal RAM */
 
@@ -327,8 +328,8 @@ struct _mcs51_state_t
 
 /* Read/Write a byte from/to the Internal RAM indirectly */
 /* (called from indirect addressing)                     */
-INLINE UINT8 iram_iread(mcs51_state_t *mcs51_state, offs_t a) { return (a <= mcs51_state->ram_mask) ? memory_read_byte_8le(mcs51_state->data, a) : 0xff; }
-INLINE void iram_iwrite(mcs51_state_t *mcs51_state, offs_t a, UINT8 d) { if (a <= mcs51_state->ram_mask) memory_write_byte_8le(mcs51_state->data, a, d); }
+INLINE UINT8 iram_iread(mcs51_state_t *mcs51_state, offs_t a) { return (a <= mcs51_state->ram_mask) ? mcs51_state->data->read_byte(a) : 0xff; }
+INLINE void iram_iwrite(mcs51_state_t *mcs51_state, offs_t a, UINT8 d) { if (a <= mcs51_state->ram_mask) mcs51_state->data->write_byte(a, d); }
 
 #define IRAM_IR(a)		iram_iread(mcs51_state, a)
 #define IRAM_IW(a, d)	iram_iwrite(mcs51_state, a, d)
@@ -342,8 +343,8 @@ INLINE void iram_iwrite(mcs51_state_t *mcs51_state, offs_t a, UINT8 d) { if (a <
 #define BIT_W(a,v)		bit_address_w(mcs51_state, a, v)
 
 /* Input/Output a byte from given I/O port */
-#define IN(port)		((UINT8)memory_read_byte(mcs51_state->io, port))
-#define OUT(port,value) memory_write_byte(mcs51_state->io, port,value)
+#define IN(port)		((UINT8)mcs51_state->io->read_byte(port))
+#define OUT(port,value) mcs51_state->io->write_byte(port,value)
 
 
 /***************************************************************************
@@ -648,7 +649,7 @@ INLINE void serial_transmit(mcs51_state_t *mcs51_state, UINT8 data);
     INLINE FUNCTIONS
 ***************************************************************************/
 
-INLINE mcs51_state_t *get_safe_token(running_device *device)
+INLINE mcs51_state_t *get_safe_token(device_t *device)
 {
 	assert(device != NULL);
 	assert(device->type() == I8031 ||
@@ -689,8 +690,8 @@ INLINE UINT8 r_psw(mcs51_state_t *mcs51_state) { return SFR_A(ADDR_PSW); }
 
 INLINE void update_ptrs(mcs51_state_t *mcs51_state)
 {
-	mcs51_state->internal_ram = (UINT8 *)memory_get_write_ptr(mcs51_state->data, 0x00);
-	mcs51_state->sfr_ram = (UINT8 *)memory_get_write_ptr(mcs51_state->data, 0x100);
+	mcs51_state->internal_ram = (UINT8 *)mcs51_state->data->get_write_ptr(0x00);
+	mcs51_state->sfr_ram = (UINT8 *)mcs51_state->data->get_write_ptr(0x100);
 }
 
 
@@ -757,13 +758,13 @@ INLINE offs_t external_ram_iaddr(mcs51_state_t *mcs51_state, offs_t offset, offs
 
 INLINE UINT8 iram_read(mcs51_state_t *mcs51_state, size_t offset)
 {
-	return (((offset) < 0x80) ? memory_read_byte_8le(mcs51_state->data, offset) : mcs51_state->sfr_read(mcs51_state, offset));
+	return (((offset) < 0x80) ? mcs51_state->data->read_byte(offset) : mcs51_state->sfr_read(mcs51_state, offset));
 }
 
 INLINE void iram_write(mcs51_state_t *mcs51_state, size_t offset, UINT8 data)
 {
 	if ((offset) < 0x80)
-		memory_write_byte_8le(mcs51_state->data, offset, data);
+		mcs51_state->data->write_byte(offset, data);
 	else
 		mcs51_state->sfr_write(mcs51_state, offset, data);
 }
@@ -1242,7 +1243,7 @@ INLINE void serial_receive(mcs51_state_t *mcs51_state)
 {
 	int mode = (GET_SM0<<1) | GET_SM1;
 
-	if(GET_ES && GET_REN) {
+	if (GET_REN) {
 		switch(mode) {
 			//8 bit shifter ( + start,stop bit ) - baud set by clock freq / 12
 			case 0:
@@ -1281,13 +1282,13 @@ INLINE void	update_irq_prio(mcs51_state_t *mcs51_state, UINT8 ipl, UINT8 iph)
 ***************************************************************************/
 
 
-void i8051_set_serial_tx_callback(running_device *device, mcs51_serial_tx_func tx_func)
+void i8051_set_serial_tx_callback(device_t *device, mcs51_serial_tx_func tx_func)
 {
 	mcs51_state_t *mcs51_state = get_safe_token(device);
 	mcs51_state->serial_tx_callback = tx_func;
 }
 
-void i8051_set_serial_rx_callback(running_device *device, mcs51_serial_rx_func rx_func)
+void i8051_set_serial_rx_callback(device_t *device, mcs51_serial_rx_func rx_func)
 {
 	mcs51_state_t *mcs51_state = get_safe_token(device);
 	mcs51_state->serial_rx_callback = rx_func;
@@ -1808,12 +1809,11 @@ static void mcs51_set_irq_line(mcs51_state_t *mcs51_state, int irqline, int stat
 {
 	/* From the manual:
      *
-     * <cite>In operatiom all the interrupt tlags are latched into the
-     * interrupt control system during State 5 of every ma-
-     * chine cycle. The samples are polled during the follow-
-     * ing machine cycle.</cite>
+     * <cite>In operation all the interrupt flags are latched into the
+     * interrupt control system during State 5 of every machine cycle.
+     * The samples are polled during the following machine cycle.</cite>
      *
-     * ==> Since we do not emulate substates, this assumes that the signal is present
+     * ==> Since we do not emulate sub-states, this assumes that the signal is present
      * for at least one cycle (12 states)
      *
      */
@@ -1957,7 +1957,7 @@ static CPU_EXECUTE( mcs51 )
 		/* Read next opcode */
 		PPC = PC;
 		debugger_instruction_hook(device, PC);
-		op = memory_decrypted_read_byte(mcs51_state->program, PC++);
+		op = mcs51_state->direct->read_decrypted_byte(PC++);
 
 		/* process opcode and count cycles */
 		mcs51_state->inst_cycles = mcs51_cycles[op];
@@ -2024,7 +2024,7 @@ static void mcs51_sfr_write(mcs51_state_t *mcs51_state, size_t offset, UINT8 dat
 			/* no write in this case according to manual */
 			return;
 	}
-	memory_write_byte_8le(mcs51_state->data, (size_t)offset | 0x100, data);
+	mcs51_state->data->write_byte((size_t)offset | 0x100, data);
 }
 
 static UINT8 mcs51_sfr_read(mcs51_state_t *mcs51_state, size_t offset)
@@ -2057,7 +2057,7 @@ static UINT8 mcs51_sfr_read(mcs51_state_t *mcs51_state, size_t offset)
 		case ADDR_SBUF:
 		case ADDR_IE:
 		case ADDR_IP:
-			return memory_read_byte_8le(mcs51_state->data, (size_t) offset | 0x100);
+			return mcs51_state->data->read_byte((size_t) offset | 0x100);
 		/* Illegal or non-implemented sfr */
 		default:
 			LOG(("mcs51 '%s': attemping to read an invalid/non-implemented SFR address: %x at 0x%04x\n", mcs51_state->device->tag(), (UINT32)offset,PC));
@@ -2075,6 +2075,7 @@ static CPU_INIT( mcs51 )
 	mcs51_state->device = device;
 
 	mcs51_state->program = device->space(AS_PROGRAM);
+	mcs51_state->direct = &mcs51_state->program->direct();
 	mcs51_state->data = device->space(AS_DATA);
 	mcs51_state->io = device->space(AS_IO);
 
@@ -2089,18 +2090,18 @@ static CPU_INIT( mcs51 )
 
 	/* Save states */
 
-	state_save_register_device_item(device, 0, mcs51_state->ppc);
-	state_save_register_device_item(device, 0, mcs51_state->pc);
-	state_save_register_device_item(device, 0, mcs51_state->rwm );
-	state_save_register_device_item(device, 0, mcs51_state->cur_irq_prio );
-	state_save_register_device_item(device, 0, mcs51_state->last_line_state );
-	state_save_register_device_item(device, 0, mcs51_state->t0_cnt );
-	state_save_register_device_item(device, 0, mcs51_state->t1_cnt );
-	state_save_register_device_item(device, 0, mcs51_state->t2_cnt );
-	state_save_register_device_item(device, 0, mcs51_state->t2ex_cnt );
-	state_save_register_device_item(device, 0, mcs51_state->recalc_parity );
-	state_save_register_device_item_array(device, 0, mcs51_state->irq_prio );
-	state_save_register_device_item(device, 0, mcs51_state->irq_active );
+	device->save_item(NAME(mcs51_state->ppc));
+	device->save_item(NAME(mcs51_state->pc));
+	device->save_item(NAME(mcs51_state->rwm) );
+	device->save_item(NAME(mcs51_state->cur_irq_prio) );
+	device->save_item(NAME(mcs51_state->last_line_state) );
+	device->save_item(NAME(mcs51_state->t0_cnt) );
+	device->save_item(NAME(mcs51_state->t1_cnt) );
+	device->save_item(NAME(mcs51_state->t2_cnt) );
+	device->save_item(NAME(mcs51_state->t2ex_cnt) );
+	device->save_item(NAME(mcs51_state->recalc_parity) );
+	device->save_item(NAME(mcs51_state->irq_prio) );
+	device->save_item(NAME(mcs51_state->irq_active) );
 }
 
 static CPU_INIT( i80c51 )
@@ -2212,7 +2213,7 @@ static void i8052_sfr_write(mcs51_state_t *mcs51_state, size_t offset, UINT8 dat
 		case ADDR_RCAP2H:
 		case ADDR_TL2:
 		case ADDR_TH2:
-			memory_write_byte_8le(mcs51_state->data, (size_t) offset | 0x100, data);
+			mcs51_state->data->write_byte((size_t) offset | 0x100, data);
 			break;
 
 		default:
@@ -2230,7 +2231,7 @@ static UINT8 i8052_sfr_read(mcs51_state_t *mcs51_state, size_t offset)
 		case ADDR_RCAP2H:
 		case ADDR_TL2:
 		case ADDR_TH2:
-			return memory_read_byte_8le(mcs51_state->data, (size_t) offset | 0x100);
+			return mcs51_state->data->read_byte((size_t) offset | 0x100);
 		default:
 			return mcs51_sfr_read(mcs51_state, offset);
 	}
@@ -2272,7 +2273,7 @@ static void i80c52_sfr_write(mcs51_state_t *mcs51_state, size_t offset, UINT8 da
 			i8052_sfr_write(mcs51_state, offset, data);
 			return;
 	}
-	memory_write_byte_8le(mcs51_state->data, (size_t) offset | 0x100, data);
+	mcs51_state->data->write_byte((size_t) offset | 0x100, data);
 }
 
 static UINT8 i80c52_sfr_read(mcs51_state_t *mcs51_state, size_t offset)
@@ -2283,7 +2284,7 @@ static UINT8 i80c52_sfr_read(mcs51_state_t *mcs51_state, size_t offset)
 		case ADDR_IPH:
 		case ADDR_SADDR:
 		case ADDR_SADEN:
-			return memory_read_byte_8le(mcs51_state->data, (size_t) offset | 0x100);
+			return mcs51_state->data->read_byte((size_t) offset | 0x100);
 		default:
 			return i8052_sfr_read(mcs51_state, offset);
 	}
@@ -2355,7 +2356,7 @@ static void ds5002fp_sfr_write(mcs51_state_t *mcs51_state, size_t offset, UINT8 
 			mcs51_sfr_write(mcs51_state, offset, data);
 			return;
 	}
-	memory_write_byte_8le(mcs51_state->data, (size_t) offset | 0x100, data);
+	mcs51_state->data->write_byte((size_t) offset | 0x100, data);
 }
 
 static UINT8 ds5002fp_sfr_read(mcs51_state_t *mcs51_state, size_t offset)
@@ -2376,14 +2377,14 @@ static UINT8 ds5002fp_sfr_read(mcs51_state_t *mcs51_state, size_t offset)
 		default:
 			return mcs51_sfr_read(mcs51_state, offset);
 	}
-	return memory_read_byte_8le(mcs51_state->data, (size_t) offset | 0x100);
+	return mcs51_state->data->read_byte((size_t) offset | 0x100);
 }
 
 static CPU_INIT( ds5002fp )
 {
 	/* default configuration */
 	static const ds5002fp_config default_config = { 0x00, 0x00, 0x00 };
-	const ds5002fp_config *sconfig = device->baseconfig().static_config() ? (const ds5002fp_config *)device->baseconfig().static_config() : &default_config;
+	const ds5002fp_config *sconfig = device->static_config() ? (const ds5002fp_config *)device->static_config() : &default_config;
 	mcs51_state_t *mcs51_state = get_safe_token(device);
 
 	CPU_INIT_CALL( mcs51 );
@@ -2393,9 +2394,9 @@ static CPU_INIT( ds5002fp )
 	mcs51_state->sfr_read = ds5002fp_sfr_read;
 	mcs51_state->sfr_write = ds5002fp_sfr_write;
 
-	state_save_register_device_item(device, 0, mcs51_state->ds5002fp.previous_ta );
-	state_save_register_device_item(device, 0, mcs51_state->ds5002fp.ta_window );
-	state_save_register_device_item(device, 0, mcs51_state->ds5002fp.range );
+	device->save_item(NAME(mcs51_state->ds5002fp.previous_ta) );
+	device->save_item(NAME(mcs51_state->ds5002fp.ta_window) );
+	device->save_item(NAME(mcs51_state->ds5002fp.range) );
 
 }
 
@@ -2403,20 +2404,20 @@ static CPU_INIT( ds5002fp )
     ADDRESS MAPS
 ***************************************************************************/
 
-static ADDRESS_MAP_START(program_12bit, ADDRESS_SPACE_PROGRAM, 8)
+static ADDRESS_MAP_START(program_12bit, AS_PROGRAM, 8)
 	AM_RANGE(0x00, 0x0fff) AM_ROM
 ADDRESS_MAP_END
 
-static ADDRESS_MAP_START(program_13bit, ADDRESS_SPACE_PROGRAM, 8)
+static ADDRESS_MAP_START(program_13bit, AS_PROGRAM, 8)
 	AM_RANGE(0x00, 0x1fff) AM_ROM
 ADDRESS_MAP_END
 
-static ADDRESS_MAP_START(data_7bit, ADDRESS_SPACE_DATA, 8)
+static ADDRESS_MAP_START(data_7bit, AS_DATA, 8)
 	AM_RANGE(0x0000, 0x007f) AM_RAM
 	AM_RANGE(0x0100, 0x01ff) AM_RAM /* SFR */
 ADDRESS_MAP_END
 
-static ADDRESS_MAP_START(data_8bit, ADDRESS_SPACE_DATA, 8)
+static ADDRESS_MAP_START(data_8bit, AS_DATA, 8)
 	AM_RANGE(0x0000, 0x00ff) AM_RAM
 	AM_RANGE(0x0100, 0x01ff) AM_RAM /* SFR */
 ADDRESS_MAP_END
@@ -2486,15 +2487,15 @@ static CPU_GET_INFO( mcs51 )
 		case CPUINFO_INT_MAX_CYCLES:					info->i = 20; /* rough guess */				break;
 		case CPUINFO_INT_INPUT_LINES:       			info->i = 3;								break;
 
-		case DEVINFO_INT_DATABUS_WIDTH + ADDRESS_SPACE_PROGRAM:	info->i = 8;						break;
-		case DEVINFO_INT_ADDRBUS_WIDTH + ADDRESS_SPACE_PROGRAM: info->i = 16;						break;
-		case DEVINFO_INT_ADDRBUS_SHIFT + ADDRESS_SPACE_PROGRAM: info->i = 0;						break;
-		case DEVINFO_INT_DATABUS_WIDTH + ADDRESS_SPACE_DATA:	info->i = 8;						break;
-		case DEVINFO_INT_ADDRBUS_WIDTH + ADDRESS_SPACE_DATA:	info->i = 9; /* due to sfr mapping */					break;
-		case DEVINFO_INT_ADDRBUS_SHIFT + ADDRESS_SPACE_DATA:	info->i = 0;						break;
-		case DEVINFO_INT_DATABUS_WIDTH + ADDRESS_SPACE_IO:	info->i = 8;							break;
-		case DEVINFO_INT_ADDRBUS_WIDTH + ADDRESS_SPACE_IO:	info->i = 18; /* 128k for ds5002fp */							break;
-		case DEVINFO_INT_ADDRBUS_SHIFT + ADDRESS_SPACE_IO:	info->i = 0;							break;
+		case DEVINFO_INT_DATABUS_WIDTH + AS_PROGRAM:	info->i = 8;						break;
+		case DEVINFO_INT_ADDRBUS_WIDTH + AS_PROGRAM: info->i = 16;						break;
+		case DEVINFO_INT_ADDRBUS_SHIFT + AS_PROGRAM: info->i = 0;						break;
+		case DEVINFO_INT_DATABUS_WIDTH + AS_DATA:	info->i = 8;						break;
+		case DEVINFO_INT_ADDRBUS_WIDTH + AS_DATA:	info->i = 9; /* due to sfr mapping */					break;
+		case DEVINFO_INT_ADDRBUS_SHIFT + AS_DATA:	info->i = 0;						break;
+		case DEVINFO_INT_DATABUS_WIDTH + AS_IO:	info->i = 8;							break;
+		case DEVINFO_INT_ADDRBUS_WIDTH + AS_IO:	info->i = 18; /* 128k for ds5002fp */							break;
+		case DEVINFO_INT_ADDRBUS_SHIFT + AS_IO:	info->i = 0;							break;
 
 		case CPUINFO_INT_PREVIOUSPC:					info->i = PPC;								break;
 		case CPUINFO_INT_PC:							info->i = PC;								break;
@@ -2528,9 +2529,9 @@ static CPU_GET_INFO( mcs51 )
 		case CPUINFO_FCT_DISASSEMBLE:					info->disassemble = CPU_DISASSEMBLE_NAME(i8051);				break;
 		case CPUINFO_PTR_INSTRUCTION_COUNTER:			info->icount = &mcs51_state->icount;				break;
 
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_PROGRAM: info->internal_map8 = NULL;	break;
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_DATA:    info->internal_map8 = NULL;	break;
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_IO:      info->internal_map8 = NULL;	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_PROGRAM: info->internal_map8 = NULL;	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_DATA:    info->internal_map8 = NULL;	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_IO:      info->internal_map8 = NULL;	break;
 
 		case DEVINFO_STR_NAME:							strcpy(info->s, "I8051");					break;
 		case DEVINFO_STR_FAMILY:					strcpy(info->s, "MCS-51");					break;
@@ -2578,7 +2579,7 @@ CPU_GET_INFO( i8031 )
 {
 	switch (state)
 	{
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_7bit);	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_7bit);	break;
 		case DEVINFO_STR_NAME:							strcpy(info->s, "I8031");					break;
 		default:										CPU_GET_INFO_CALL(mcs51);					break;
 	}
@@ -2589,8 +2590,8 @@ CPU_GET_INFO( i8051 )
 {
 	switch (state)
 	{
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_PROGRAM: info->internal_map8 = ADDRESS_MAP_NAME(program_12bit);	break;
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_7bit);	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_PROGRAM: info->internal_map8 = ADDRESS_MAP_NAME(program_12bit);	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_7bit);	break;
 		case DEVINFO_STR_NAME:							strcpy(info->s, "I8051");					break;
 		default:										CPU_GET_INFO_CALL(mcs51);					break;
 	}
@@ -2602,7 +2603,7 @@ CPU_GET_INFO( i8032 )
 	switch (state)
 	{
 		case CPUINFO_FCT_INIT:							info->init = CPU_INIT_NAME(i8052);			break;
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_8bit);	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_8bit);	break;
 		case CPUINFO_FCT_DISASSEMBLE:					info->disassemble = CPU_DISASSEMBLE_NAME(i8052);				break;
 		case DEVINFO_STR_NAME:							strcpy(info->s, "I8032");					break;
 		default:										CPU_GET_INFO_CALL(mcs51);					break;
@@ -2614,8 +2615,8 @@ CPU_GET_INFO( i8052 )
 	switch (state)
 	{
 		case CPUINFO_FCT_INIT:							info->init = CPU_INIT_NAME(i8052);			break;
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_PROGRAM: info->internal_map8 = ADDRESS_MAP_NAME(program_13bit);	break;
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_8bit);	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_PROGRAM: info->internal_map8 = ADDRESS_MAP_NAME(program_13bit);	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_8bit);	break;
 		case CPUINFO_FCT_DISASSEMBLE:					info->disassemble = CPU_DISASSEMBLE_NAME(i8052);				break;
 		case DEVINFO_STR_NAME:							strcpy(info->s, "I8052");					break;
 		default:										CPU_GET_INFO_CALL(mcs51);					break;
@@ -2626,8 +2627,8 @@ CPU_GET_INFO( i8751 )
 {
 	switch (state)
 	{
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_PROGRAM: info->internal_map8 = ADDRESS_MAP_NAME(program_12bit);	break;
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_7bit);	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_PROGRAM: info->internal_map8 = ADDRESS_MAP_NAME(program_12bit);	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_7bit);	break;
 		case DEVINFO_STR_NAME:							strcpy(info->s, "I8751");					break;
 		default:										CPU_GET_INFO_CALL(mcs51);					break;
 	}
@@ -2638,8 +2639,8 @@ CPU_GET_INFO( i8752 )
 	switch (state)
 	{
 		case CPUINFO_FCT_INIT:							info->init = CPU_INIT_NAME(i8052);			break;
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_PROGRAM: info->internal_map8 = ADDRESS_MAP_NAME(program_13bit);	break;
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_8bit);	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_PROGRAM: info->internal_map8 = ADDRESS_MAP_NAME(program_13bit);	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_8bit);	break;
 		case CPUINFO_FCT_DISASSEMBLE:					info->disassemble = CPU_DISASSEMBLE_NAME(i8052);				break;
 		case DEVINFO_STR_NAME:							strcpy(info->s, "I8752");					break;
 		default:										CPU_GET_INFO_CALL(mcs51);					break;
@@ -2657,8 +2658,8 @@ CPU_GET_INFO( i80c31 )
 	switch (state)
 	{
 		case CPUINFO_FCT_INIT:							info->init = CPU_INIT_NAME(i80c31);			break;
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_PROGRAM: info->internal_map8 = NULL;	break;
-		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + ADDRESS_SPACE_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_7bit);	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_PROGRAM: info->internal_map8 = NULL;	break;
+		case DEVINFO_PTR_INTERNAL_MEMORY_MAP + AS_DATA:    info->internal_map8 = ADDRESS_MAP_NAME(data_7bit);	break;
 		case CPUINFO_FCT_DISASSEMBLE:					info->disassemble = CPU_DISASSEMBLE_NAME(i80c51);			break;
 		case DEVINFO_STR_NAME:							strcpy(info->s, "I80C31");					break;
 		default:										CPU_GET_INFO_CALL(i8031);					break;

@@ -1,5 +1,4 @@
 #include "emu.h"
-#include "streams.h"
 #include "vrender0.h"
 
 /***********************************
@@ -23,10 +22,10 @@ struct _vr0_state
 	sound_stream * stream;
 };
 
-INLINE vr0_state *get_safe_token(running_device *device)
+INLINE vr0_state *get_safe_token(device_t *device)
 {
 	assert(device != NULL);
-	assert(device->type() == SOUND_VRENDER0);
+	assert(device->type() == VRENDER0);
 	return (vr0_state *)downcast<legacy_device_base *>(device)->token();
 }
 
@@ -85,8 +84,8 @@ static const unsigned short ULawTo16[]=
 #define ENVVOL(chan)	(VR0->SOUNDREGS[(0x20/4)*chan+0x04/4]&0xffffff)
 
 /*
-#define GETSOUNDREG16(Chan,Offs) memory_read_word_32le(space,VR0->Intf.reg_base+0x20*Chan+Offs)
-#define GETSOUNDREG32(Chan,Offs) memory_read_dword_32le(space,VR0->Intf.reg_base+0x20*Chan+Offs)
+#define GETSOUNDREG16(Chan,Offs) space->read_word(VR0->Intf.reg_base+0x20*Chan+Offs)
+#define GETSOUNDREG32(Chan,Offs) space->read_dword(VR0->Intf.reg_base+0x20*Chan+Offs)
 
 #define CURSADDR(chan)  GETSOUNDREG32(chan,0x00)
 #define DSADDR(chan)    GETSOUNDREG16(chan,0x08)
@@ -94,7 +93,7 @@ static const unsigned short ULawTo16[]=
 #define LOOPEND(chan)   (GETSOUNDREG32(chan,0x10)&0x3fffff)
 #define ENVVOL(chan)    (GETSOUNDREG32(chan,0x04)&0xffffff)
 */
-void vr0_snd_set_areas(running_device *device,UINT32 *texture,UINT32 *frame)
+void vr0_snd_set_areas(device_t *device,UINT32 *texture,UINT32 *frame)
 {
 	vr0_state *VR0 = get_safe_token(device);
 	VR0->TexBase=texture;
@@ -106,14 +105,14 @@ static DEVICE_START( vrender0 )
 	const vr0_interface *intf;
 	vr0_state *VR0 = get_safe_token(device);
 
-	intf = (const vr0_interface *)device->baseconfig().static_config();
+	intf = (const vr0_interface *)device->static_config();
 
 	memcpy(&(VR0->Intf),intf,sizeof(vr0_interface));
 	memset(VR0->SOUNDREGS,0,sizeof(VR0->SOUNDREGS));
 
-	VR0->stream = stream_create(device, 0, 2, 44100, VR0, VR0_Update);
+	VR0->stream = device->machine().sound().stream_alloc(*device, 0, 2, 44100, VR0, VR0_Update);
 
-	state_save_register_device_item_array(device, 0, VR0->SOUNDREGS);
+	device->save_item(NAME(VR0->SOUNDREGS));
 }
 
 WRITE32_DEVICE_HANDLER(vr0_snd_write)

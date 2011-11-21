@@ -1,5 +1,4 @@
 #include "emu.h"
-#include "streams.h"
 #include "flt_vol.h"
 
 
@@ -10,10 +9,10 @@ struct _filter_volume_state
 	int				gain;
 };
 
-INLINE filter_volume_state *get_safe_token(running_device *device)
+INLINE filter_volume_state *get_safe_token(device_t *device)
 {
 	assert(device != NULL);
-	assert(device->type() == SOUND_FILTER_VOLUME);
+	assert(device->type() == FILTER_VOLUME);
 	return (filter_volume_state *)downcast<legacy_device_base *>(device)->token();
 }
 
@@ -35,11 +34,11 @@ static DEVICE_START( filter_volume )
 	filter_volume_state *info = get_safe_token(device);
 
 	info->gain = 0x100;
-	info->stream = stream_create(device, 1, 1, device->machine->sample_rate, info, filter_volume_update);
+	info->stream = device->machine().sound().stream_alloc(*device, 1, 1, device->machine().sample_rate(), info, filter_volume_update);
 }
 
 
-void flt_volume_set_volume(running_device *device, float volume)
+void flt_volume_set_volume(device_t *device, float volume)
 {
 	filter_volume_state *info = get_safe_token(device);
 	info->gain = (int)(volume * 256);

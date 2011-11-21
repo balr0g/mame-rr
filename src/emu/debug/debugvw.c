@@ -38,16 +38,15 @@
 ***************************************************************************/
 
 #include "emu.h"
+#include "express.h"
 #include "debugvw.h"
 #include "dvtext.h"
 #include "dvstate.h"
 #include "dvdisasm.h"
 #include "dvmemory.h"
 #include "debugcmd.h"
-#include "debugcmt.h"
 #include "debugcpu.h"
 #include "debugcon.h"
-#include "express.h"
 #include <ctype.h>
 
 
@@ -63,8 +62,13 @@
 debug_view_source::debug_view_source(const char *name, device_t *device)
 	: m_next(NULL),
 	  m_name(name),
-	  m_device(device)
+	  m_device(device),
+	  m_is_octal(false)
 {
+	device_execute_interface *intf;
+	if (device && device->interface(intf))
+		m_is_octal = intf->is_octal();
+
 }
 
 
@@ -148,7 +152,7 @@ void debug_view_source_list::reset()
 	{
 		debug_view_source *source = m_head;
 		m_head = source->m_next;
-		auto_free(&m_machine, source);
+		auto_free(machine(), source);
 	}
 
 	// reset the tail pointer and index
@@ -202,7 +206,6 @@ const debug_view_source *debug_view_source_list::match_device(device_t *device) 
 
 debug_view::debug_view(running_machine &machine, debug_view_type type, debug_view_osd_update_func osdupdate, void *osdprivate)
 	: m_next(NULL),
-	  m_machine(machine),
 	  m_type(type),
 	  m_source(NULL),
 	  m_source_list(machine),
@@ -219,11 +222,12 @@ debug_view::debug_view(running_machine &machine, debug_view_type type, debug_vie
 	  m_update_pending(true),
 	  m_osd_update_pending(true),
 	  m_viewdata(NULL),
-	  m_viewdata_size(0)
+	  m_viewdata_size(0),
+	  m_machine(machine)
 {
 	// allocate memory for the buffer
 	m_viewdata_size = m_visible.y * m_visible.x;
-	m_viewdata = auto_alloc_array(&machine, debug_view_char, m_viewdata_size);
+	m_viewdata = auto_alloc_array(machine, debug_view_char, m_viewdata_size);
 }
 
 
@@ -257,8 +261,8 @@ void debug_view::end_update()
 			if (size > m_viewdata_size)
 			{
 				m_viewdata_size = size;
-				auto_free(&m_machine, m_viewdata);
-				m_viewdata = auto_alloc_array(&m_machine, debug_view_char, m_viewdata_size);
+				auto_free(machine(), m_viewdata);
+				m_viewdata = auto_alloc_array(machine(), debug_view_char, m_viewdata_size);
 			}
 
 			// update the view
@@ -451,7 +455,7 @@ debug_view_manager::~debug_view_manager()
 	{
 		debug_view *oldhead = m_viewlist;
 		m_viewlist = oldhead->m_next;
-		auto_free(&m_machine, oldhead);
+		auto_free(machine(), oldhead);
 	}
 }
 
@@ -465,25 +469,25 @@ debug_view *debug_view_manager::alloc_view(debug_view_type type, debug_view_osd_
 	switch (type)
 	{
 		case DVT_CONSOLE:
-			return append(auto_alloc(&m_machine, debug_view_console(m_machine, osdupdate, osdprivate)));
+			return append(auto_alloc(machine(), debug_view_console(machine(), osdupdate, osdprivate)));
 
 		case DVT_STATE:
-			return append(auto_alloc(&m_machine, debug_view_state(m_machine, osdupdate, osdprivate)));
+			return append(auto_alloc(machine(), debug_view_state(machine(), osdupdate, osdprivate)));
 
 		case DVT_DISASSEMBLY:
-			return append(auto_alloc(&m_machine, debug_view_disasm(m_machine, osdupdate, osdprivate)));
+			return append(auto_alloc(machine(), debug_view_disasm(machine(), osdupdate, osdprivate)));
 
 		case DVT_MEMORY:
-			return append(auto_alloc(&m_machine, debug_view_memory(m_machine, osdupdate, osdprivate)));
+			return append(auto_alloc(machine(), debug_view_memory(machine(), osdupdate, osdprivate)));
 
 		case DVT_LOG:
-			return append(auto_alloc(&m_machine, debug_view_log(m_machine, osdupdate, osdprivate)));
+			return append(auto_alloc(machine(), debug_view_log(machine(), osdupdate, osdprivate)));
 
 		case DVT_TIMERS:
-//          return append(auto_alloc(&m_machine, debug_view_timers(m_machine, osdupdate, osdprivate)));
+//          return append(auto_alloc(machine(), debug_view_timers(machine(), osdupdate, osdprivate)));
 
 		case DVT_ALLOCS:
-//          return append(auto_alloc(&m_machine, debug_view_allocs(m_machine, osdupdate, osdprivate)));
+//          return append(auto_alloc(machine(), debug_view_allocs(machine(), osdupdate, osdprivate)));
 
 		default:
 			fatalerror("Attempt to create invalid debug view type %d\n", type);
@@ -503,7 +507,7 @@ void debug_view_manager::free_view(debug_view &view)
 		if (*viewptr == &view)
 		{
 			*viewptr = view.m_next;
-			auto_free(&m_machine, &view);
+			auto_free(machine(), &view);
 			break;
 		}
 }
@@ -560,9 +564,8 @@ debug_view_expression::debug_view_expression(running_machine &machine)
 	: m_machine(machine),
 	  m_dirty(true),
 	  m_result(0),
-	  m_parsed(NULL),
-	  m_string("0"),
-	  m_context(debug_cpu_get_global_symtable(&machine))
+	  m_parsed(debug_cpu_get_global_symtable(machine)),
+	  m_string("0")
 {
 }
 
@@ -573,20 +576,6 @@ debug_view_expression::debug_view_expression(running_machine &machine)
 
 debug_view_expression::~debug_view_expression()
 {
-	// free our parsed expression
-	if (m_parsed != NULL)
-		expression_free(m_parsed);
-}
-
-
-//-------------------------------------------------
-//  set_string - set the expression string
-//-------------------------------------------------
-
-void debug_view_expression::set_string(const char *string)
-{
-	m_string = string;
-	m_dirty = true;
 }
 
 
@@ -597,7 +586,7 @@ void debug_view_expression::set_string(const char *string)
 
 void debug_view_expression::set_context(symbol_table *context)
 {
-	m_context = (context != NULL) ? context : debug_cpu_get_global_symtable(&m_machine);
+	m_parsed.set_symbols((context != NULL) ? context : debug_cpu_get_global_symtable(machine()));
 	m_dirty = true;
 }
 
@@ -614,28 +603,33 @@ bool debug_view_expression::recompute()
 	// if dirty, re-evaluate
 	if (m_dirty)
 	{
-		// parse the new expression
-		parsed_expression *expr;
-		EXPRERR exprerr = expression_parse(m_string, m_context, &debug_expression_callbacks, &m_machine, &expr);
-
-		// if it worked, update the expression
-		if (exprerr == EXPRERR_NONE)
+		astring oldstring(m_parsed.original_string());
+		try
 		{
-			if (m_parsed != NULL)
-				expression_free(m_parsed);
-			m_parsed = expr;
+			m_parsed.parse(m_string);
+		}
+		catch (expression_error &)
+		{
+			m_parsed.parse(oldstring);
 		}
 	}
 
 	// if we have a parsed expression, evalute it
-	if (m_parsed != NULL)
+	if (!m_parsed.is_empty())
 	{
-		UINT64 oldresult = m_result;
-
 		// recompute the value of the expression
-		expression_execute(m_parsed, &m_result);
-		if (m_result != oldresult)
-			changed = true;
+		try
+		{
+			UINT64 newresult = m_parsed.execute();
+			if (newresult != m_result)
+			{
+				m_result = newresult;
+				changed = true;
+			}
+		}
+		catch (expression_error &)
+		{
+		}
 	}
 
 	// expression no longer dirty by definition

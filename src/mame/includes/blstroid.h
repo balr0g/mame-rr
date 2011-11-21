@@ -6,22 +6,19 @@
 
 #include "machine/atarigen.h"
 
-class blstroid_state
+class blstroid_state : public atarigen_state
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, blstroid_state(machine)); }
+	blstroid_state(const machine_config &mconfig, device_type type, const char *tag)
+		: atarigen_state(mconfig, type, tag) { }
 
-	blstroid_state(running_machine &machine) { }
-
-	atarigen_state	atarigen;
-
-	UINT16 *		priorityram;
+	UINT16 *		m_priorityram;
 };
 
 
 /*----------- defined in video/blstroid.c -----------*/
 
 VIDEO_START( blstroid );
-VIDEO_UPDATE( blstroid );
+SCREEN_UPDATE( blstroid );
 
 void blstroid_scanline_update(screen_device &screen, int scanline);

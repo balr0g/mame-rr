@@ -43,31 +43,32 @@
 typedef struct _sc61860_state sc61860_state;
 struct _sc61860_state
 {
-    sc61860_cpu_core *config;
-    UINT8 ram[0x60]; // internal special ram
-    UINT8 p, q, r; //7 bits only?
+	sc61860_cpu_core *config;
+	UINT8 p, q, r; //7 bits only?
 
-    UINT8 c;        // port c, used for HLT.
-    UINT8 d, h;
-    UINT16 oldpc, pc, dp;
+	UINT8 c;        // port c, used for HLT.
+	UINT8 d, h;
+	UINT16 oldpc, pc, dp;
 
-    int carry, zero;
+	int carry, zero;
 
-    struct { int t2ms, t512ms; int count;} timer;
+	struct { int t2ms, t512ms; int count; } timer;
 
-    legacy_cpu_device *device;
-    const address_space *program;
-    int icount;
+	legacy_cpu_device *device;
+	address_space *program;
+	direct_read_data *direct;
+	int icount;
+	UINT8 ram[0x100]; // internal special ram, should be 0x60, 0x100 to avoid memory corruption for now
 };
 
-INLINE sc61860_state *get_safe_token(running_device *device)
+INLINE sc61860_state *get_safe_token(device_t *device)
 {
 	assert(device != NULL);
 	assert(device->type() == SC61860);
 	return (sc61860_state *)downcast<legacy_cpu_device *>(device)->token();
 }
 
-UINT8 *sc61860_internal_ram(running_device *device)
+UINT8 *sc61860_internal_ram(device_t *device)
 {
 	sc61860_state *cpustate = get_safe_token(device);
 	return cpustate->ram;
@@ -102,10 +103,11 @@ static CPU_RESET( sc61860 )
 static CPU_INIT( sc61860 )
 {
 	sc61860_state *cpustate = get_safe_token(device);
-	cpustate->config = (sc61860_cpu_core *) device->baseconfig().static_config();
-	timer_pulse(device->machine, ATTOTIME_IN_HZ(500), cpustate, 0, sc61860_2ms_tick);
+	cpustate->config = (sc61860_cpu_core *) device->static_config();
+	device->machine().scheduler().timer_pulse(attotime::from_hz(500), FUNC(sc61860_2ms_tick), 0, cpustate);
 	cpustate->device = device;
 	cpustate->program = device->space(AS_PROGRAM);
+	cpustate->direct = &cpustate->program->direct();
 }
 
 static CPU_EXECUTE( sc61860 )
@@ -120,19 +122,21 @@ static CPU_EXECUTE( sc61860 )
 
 		sc61860_instruction(cpustate);
 
-               /* Are we in HLT-mode? */
-               /*if (cpustate->c & 4)
-         {
-         if ((cpustate->config && cpustate->config->ina && (cpustate->config->ina(cpustate)!=0)) || cpustate->timer.t512ms)
-         {
-                 cpustate->c&=0xfb;
-                 if (cpustate->config->outc) cpustate->config->outc(cpustate->c);
-         }
-         cpustate->icount-=4;
-         }
-         else if(cpustate->c & 8) {}
+#if 0
+		/* Are we in HLT-mode? */
+		if (cpustate->c & 4)
+		{
+			if ((cpustate->config && cpustate->config->ina && (cpustate->config->ina(cpustate)!=0)) || cpustate->timer.t512ms)
+			{
+				cpustate->c&=0xfb;
+				if (cpustate->config->outc) cpustate->config->outc(cpustate->c);
+			}
+			cpustate->icount-=4;
+		}
+		else if(cpustate->c & 8) {}
 
-         else sc61860_instruction(cpustate);*/
+		else sc61860_instruction(cpustate);
+#endif
 
 	} while (cpustate->icount > 0);
 }
@@ -183,15 +187,15 @@ CPU_GET_INFO( sc61860 )
 		case CPUINFO_INT_MIN_CYCLES:					info->i = 2;							break;
 		case CPUINFO_INT_MAX_CYCLES:					info->i = 4;							break;
 
-		case DEVINFO_INT_DATABUS_WIDTH + ADDRESS_SPACE_PROGRAM:	info->i = 8;					break;
-		case DEVINFO_INT_ADDRBUS_WIDTH + ADDRESS_SPACE_PROGRAM: info->i = 16;					break;
-		case DEVINFO_INT_ADDRBUS_SHIFT + ADDRESS_SPACE_PROGRAM: info->i = 0;					break;
-		case DEVINFO_INT_DATABUS_WIDTH + ADDRESS_SPACE_DATA:	info->i = 0;					break;
-		case DEVINFO_INT_ADDRBUS_WIDTH + ADDRESS_SPACE_DATA:	info->i = 0;					break;
-		case DEVINFO_INT_ADDRBUS_SHIFT + ADDRESS_SPACE_DATA:	info->i = 0;					break;
-		case DEVINFO_INT_DATABUS_WIDTH + ADDRESS_SPACE_IO:		info->i = 0;					break;
-		case DEVINFO_INT_ADDRBUS_WIDTH + ADDRESS_SPACE_IO:		info->i = 0;					break;
-		case DEVINFO_INT_ADDRBUS_SHIFT + ADDRESS_SPACE_IO:		info->i = 0;					break;
+		case DEVINFO_INT_DATABUS_WIDTH + AS_PROGRAM:	info->i = 8;					break;
+		case DEVINFO_INT_ADDRBUS_WIDTH + AS_PROGRAM: info->i = 16;					break;
+		case DEVINFO_INT_ADDRBUS_SHIFT + AS_PROGRAM: info->i = 0;					break;
+		case DEVINFO_INT_DATABUS_WIDTH + AS_DATA:	info->i = 0;					break;
+		case DEVINFO_INT_ADDRBUS_WIDTH + AS_DATA:	info->i = 0;					break;
+		case DEVINFO_INT_ADDRBUS_SHIFT + AS_DATA:	info->i = 0;					break;
+		case DEVINFO_INT_DATABUS_WIDTH + AS_IO:		info->i = 0;					break;
+		case DEVINFO_INT_ADDRBUS_WIDTH + AS_IO:		info->i = 0;					break;
+		case DEVINFO_INT_ADDRBUS_SHIFT + AS_IO:		info->i = 0;					break;
 
 		case CPUINFO_INT_PREVIOUSPC:					info->i = cpustate->oldpc;						break;
 

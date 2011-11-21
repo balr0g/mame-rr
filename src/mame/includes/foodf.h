@@ -5,22 +5,24 @@
 *************************************************************************/
 
 #include "machine/atarigen.h"
+#include "machine/x2212.h"
 
-class foodf_state
+class foodf_state : public atarigen_state
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, foodf_state(machine)); }
+	foodf_state(const machine_config &mconfig, device_type type, const char *tag)
+		: atarigen_state(mconfig, type, tag),
+		  m_nvram(*this, "nvram") { }
 
-	foodf_state(running_machine &machine) { }
+	required_device<x2212_device> m_nvram;
 
-	atarigen_state	atarigen;
+	double			m_rweights[3];
+	double			m_gweights[3];
+	double			m_bweights[2];
+	UINT8			m_playfield_flip;
 
-	double			rweights[3];
-	double			gweights[3];
-	double			bweights[2];
-	UINT8			playfield_flip;
-
-	UINT8			whichport;
+	UINT8			m_whichport;
+	UINT16 *m_spriteram;
 };
 
 
@@ -30,4 +32,4 @@ WRITE16_HANDLER( foodf_paletteram_w );
 
 void foodf_set_flip(foodf_state *state, int flip);
 VIDEO_START( foodf );
-VIDEO_UPDATE( foodf );
+SCREEN_UPDATE( foodf );

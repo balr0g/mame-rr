@@ -4,32 +4,34 @@
 
 *************************************************************************/
 
-class capbowl_state
+#include "machine/nvram.h"
+
+class capbowl_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, capbowl_state(machine)); }
+	capbowl_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
-	capbowl_state(running_machine &machine) { }
+	void init_nvram(nvram_device &nvram, void *base, size_t size);
 
 	/* memory pointers */
-	UINT8 *  rowaddress;
-//  UINT8 *  nvram; // currently this uses generic_nvram
+	UINT8 *  m_rowaddress;
 
 	/* video-related */
-	offs_t blitter_addr;
+	offs_t m_blitter_addr;
 
 	/* input-related */
-	UINT8 last_trackball_val[2];
+	UINT8 m_last_trackball_val[2];
 
 	/* devices */
-	running_device *maincpu;
-	running_device *audiocpu;
+	device_t *m_maincpu;
+	device_t *m_audiocpu;
 };
 
 /*----------- defined in video/capbowl.c -----------*/
 
 VIDEO_START( capbowl );
-VIDEO_UPDATE( capbowl );
+SCREEN_UPDATE( capbowl );
 
 WRITE8_HANDLER( bowlrama_blitter_w );
 READ8_HANDLER( bowlrama_blitter_r );

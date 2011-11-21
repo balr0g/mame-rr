@@ -4,32 +4,33 @@
 
 *************************************************************************/
 
-class suprslam_state
+class suprslam_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, suprslam_state(machine)); }
-
-	suprslam_state(running_machine &machine) { }
+	suprslam_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT16 *    screen_videoram;
-	UINT16 *    bg_videoram;
-	UINT16 *    sp_videoram;
-	UINT16 *    spriteram;
-//  UINT16 *    paletteram; // this currently uses generic palette handling
+	UINT16 *    m_screen_videoram;
+	UINT16 *    m_bg_videoram;
+	UINT16 *    m_sp_videoram;
+	UINT16 *    m_spriteram;
+//  UINT16 *    m_paletteram; // this currently uses generic palette handling
 
 	/* video-related */
-	tilemap_t     *screen_tilemap, *bg_tilemap;
-	UINT16      screen_bank, bg_bank;
-	UINT16      *spr_ctrl;
-	UINT16      *screen_vregs;
+	tilemap_t     *m_screen_tilemap;
+	tilemap_t     *m_bg_tilemap;
+	UINT16      m_screen_bank;
+	UINT16      m_bg_bank;
+	UINT16      *m_spr_ctrl;
+	UINT16      *m_screen_vregs;
 
 	/* misc */
-	int         pending_command;
+	int         m_pending_command;
 
 	/* devices */
-	running_device *audiocpu;
-	running_device *k053936;
+	device_t *m_audiocpu;
+	device_t *m_k053936;
 };
 
 
@@ -40,4 +41,4 @@ WRITE16_HANDLER( suprslam_bg_videoram_w );
 WRITE16_HANDLER( suprslam_bank_w );
 
 VIDEO_START( suprslam );
-VIDEO_UPDATE( suprslam );
+SCREEN_UPDATE( suprslam );

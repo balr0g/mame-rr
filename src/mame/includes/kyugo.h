@@ -4,31 +4,34 @@
 
 ***************************************************************************/
 
-class kyugo_state
+class kyugo_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, kyugo_state(machine)); }
-
-	kyugo_state(running_machine &machine) { }
+	kyugo_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *     fgvideoram;
-	UINT8 *     bgvideoram;
-	UINT8 *     bgattribram;
-	UINT8 *     spriteram_1;
-	UINT8 *     spriteram_2;
-	UINT8 *     shared_ram;
+	UINT8 *     m_fgvideoram;
+	UINT8 *     m_bgvideoram;
+	UINT8 *     m_bgattribram;
+	UINT8 *     m_spriteram_1;
+	UINT8 *     m_spriteram_2;
+	UINT8 *     m_shared_ram;
 
 	/* video-related */
-	tilemap_t     *bg_tilemap, *fg_tilemap;
-	UINT8       scroll_x_lo, scroll_x_hi, scroll_y;
-	int         bgpalbank, fgcolor;
-	int         flipscreen;
-	const UINT8 *color_codes;
+	tilemap_t     *m_bg_tilemap;
+	tilemap_t     *m_fg_tilemap;
+	UINT8       m_scroll_x_lo;
+	UINT8       m_scroll_x_hi;
+	UINT8       m_scroll_y;
+	int         m_bgpalbank;
+	int         m_fgcolor;
+	int         m_flipscreen;
+	const UINT8 *m_color_codes;
 
 	/* devices */
-	running_device *maincpu;
-	running_device *subcpu;
+	device_t *m_maincpu;
+	device_t *m_subcpu;
 };
 
 
@@ -45,4 +48,4 @@ WRITE8_HANDLER( kyugo_scroll_y_w );
 WRITE8_HANDLER( kyugo_flipscreen_w );
 
 VIDEO_START( kyugo );
-VIDEO_UPDATE( kyugo );
+SCREEN_UPDATE( kyugo );

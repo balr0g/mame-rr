@@ -5,25 +5,24 @@
 *************************************************************************/
 
 
-class cheekyms_state
+class cheekyms_state : public driver_device
 {
 public:
-	static void *alloc(running_machine &machine) { return auto_alloc_clear(&machine, cheekyms_state(machine)); }
-
-	cheekyms_state(running_machine &machine) { }
+	cheekyms_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag) { }
 
 	/* memory pointers */
-	UINT8 *        videoram;
-	UINT8 *        spriteram;
-	UINT8 *        port_80;
+	UINT8 *        m_videoram;
+	UINT8 *        m_spriteram;
+	UINT8 *        m_port_80;
 
 	/* video-related */
-	tilemap_t        *cm_tilemap;
-	bitmap_t       *bitmap_buffer;
+	tilemap_t        *m_cm_tilemap;
+	bitmap_t       *m_bitmap_buffer;
 
 	/* devices */
-	running_device *maincpu;
-	running_device *dac;
+	device_t *m_maincpu;
+	device_t *m_dac;
 };
 
 
@@ -31,6 +30,6 @@ public:
 
 PALETTE_INIT( cheekyms );
 VIDEO_START( cheekyms );
-VIDEO_UPDATE( cheekyms );
+SCREEN_UPDATE( cheekyms );
 WRITE8_HANDLER( cheekyms_port_40_w );
 WRITE8_HANDLER( cheekyms_port_80_w );

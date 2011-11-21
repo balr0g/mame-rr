@@ -36,6 +36,7 @@
 
 // MAMEOS headers
 #include "debugosx.h"
+#include "osdsdl.h"
 
 
 
@@ -59,23 +60,31 @@ static NSString *const MAMEAuxiliaryDebugWindowWillCloseNotification
 
 static void debugwin_view_update(debug_view &view, void *osdprivate);
 
-static void console_create_window(running_machine *machine);
+static void console_create_window(running_machine &machine);
 
 
 //============================================================
-//  osd_wait_for_debugger
+//  sdl_osd_interface::init_debugger
 //============================================================
 
-void osd_wait_for_debugger(running_device *device, int firststop)
+void sdl_osd_interface::init_debugger()
+{
+}
+
+//============================================================
+//  sdl_osd_interface::wait_for_debugger
+//============================================================
+
+void sdl_osd_interface::wait_for_debugger(device_t &device, bool firststop)
 {
 	// create a console window
 	if (main_console == nil)
-		console_create_window(device->machine);
+		console_create_window(machine());
 
 	// make sure the debug windows are visible
 	waiting_for_debugger = YES;
 	if (firststop) {
-		NSDictionary *info = [NSDictionary dictionaryWithObjectsAndKeys:[NSValue valueWithPointer:device],
+		NSDictionary *info = [NSDictionary dictionaryWithObjectsAndKeys:[NSValue valueWithPointer:&device],
 																		@"MAMEDebugDevice",
 																		nil];
 		[[NSNotificationCenter defaultCenter] postNotificationName:MAMEShowDebuggerNotification
@@ -102,7 +111,7 @@ void osd_wait_for_debugger(running_device *device, int firststop)
 //  debugwin_update_during_game
 //============================================================
 
-void debugwin_update_during_game(running_machine *machine)
+void debugwin_update_during_game(running_machine &machine)
 {
 }
 
@@ -121,7 +130,7 @@ static void debugwin_view_update(debug_view &view, void *osdprivate)
 //  console_create_window
 //============================================================
 
-void console_create_window(running_machine *machine)
+void console_create_window(running_machine &machine)
 {
 	main_console = [[MAMEDebugConsole alloc] initWithMachine:machine];
 }
@@ -335,12 +344,12 @@ void console_create_window(running_machine *machine)
 }
 
 
-- (id)initWithFrame:(NSRect)f type:(debug_view_type)t machine:(running_machine *)m {
+- (id)initWithFrame:(NSRect)f type:(debug_view_type)t machine:(running_machine &)m {
 	if (!(self = [super initWithFrame:f]))
 		return nil;
 	type = t;
-	machine = m;
-	view = machine->m_debug_view->alloc_view((debug_view_type)type, debugwin_view_update, self);
+	machine = &m;
+	view = machine->debug_view().alloc_view((debug_view_type)type, debugwin_view_update, self);
 	if (view == nil) {
 		[self release];
 		return nil;
@@ -656,7 +665,7 @@ void console_create_window(running_machine *machine)
 
 
 - (void)insertNewline:(id)sender {
-	debug_cpu_get_visible_cpu(machine)->debug()->single_step();
+	debug_cpu_get_visible_cpu(*machine)->debug()->single_step();
 }
 
 
@@ -686,7 +695,7 @@ void console_create_window(running_machine *machine)
 
 @implementation MAMEMemoryView
 
-- (id)initWithFrame:(NSRect)f machine:(running_machine *)m {
+- (id)initWithFrame:(NSRect)f machine:(running_machine &)m {
 	NSMenu	*contextMenu;
 
 	if (!(self = [super initWithFrame:f type:DVT_MEMORY machine:m]))
@@ -726,7 +735,7 @@ void console_create_window(running_machine *machine)
 
 - (NSSize)maximumFrameSize {
 	debug_view_xy				max;
-	running_device				*curcpu = debug_cpu_get_visible_cpu(machine);
+	device_t				*curcpu = debug_cpu_get_visible_cpu(*machine);
 	const debug_view_source		*source = view->source_list().match_device(curcpu);
 
 	max.x = max.y = 0;
@@ -773,7 +782,7 @@ void console_create_window(running_machine *machine)
 }
 
 
-- (void)selectSubviewForCPU:(running_device *)device {
+- (void)selectSubviewForCPU:(device_t *)device {
 	const debug_view_source		*selected = view->source();
 	const debug_view_source		*source = view->source_list().match_device(device);
 	if ( selected != source ) {
@@ -878,8 +887,8 @@ void console_create_window(running_machine *machine)
 
 @implementation MAMEDisassemblyView
 
-- (device_debug::breakpoint *)findBreakpointAtAddress:(offs_t)address inAddressSpace:(const address_space *)space {
-	device_debug			*cpuinfo = space->cpu->debug();
+- (device_debug::breakpoint *)findBreakpointAtAddress:(offs_t)address inAddressSpace:(address_space *)space {
+	device_debug			*cpuinfo = space->device().debug();
 	device_debug::breakpoint	*bp;
 	for (bp = cpuinfo->breakpoint_first(); (bp != NULL) && (address != bp->address()); bp = bp->next()) {}
 	return bp;
@@ -934,7 +943,7 @@ void console_create_window(running_machine *machine)
 }
 
 
-- (id)initWithFrame:(NSRect)f machine:(running_machine *)m useConsole:(BOOL)uc {
+- (id)initWithFrame:(NSRect)f machine:(running_machine &)m useConsole:(BOOL)uc {
 	if (!(self = [super initWithFrame:f type:DVT_DISASSEMBLY machine:m]))
 		return nil;
 	useConsole = uc;
@@ -955,7 +964,7 @@ void console_create_window(running_machine *machine)
 	device_debug::breakpoint	*breakpoint = NULL;
 
 	if (view->cursor_visible()) {
-		if (debug_cpu_get_visible_cpu(machine) == view->source()->device()) {
+		if (debug_cpu_get_visible_cpu(*machine) == view->source()->device()) {
 			isCurrent = YES;
 			if (!useConsole || isCurrent) {
 				offs_t address = downcast<debug_view_disasm *>(view)->selected_address();
@@ -1011,7 +1020,7 @@ void console_create_window(running_machine *machine)
 
 - (NSSize)maximumFrameSize {
 	debug_view_xy				max;
-	running_device				*curcpu = debug_cpu_get_visible_cpu(machine);
+	device_t				*curcpu = debug_cpu_get_visible_cpu(*machine);
 	const debug_view_source		*source = view->source_list().match_device(curcpu);
 
 	max.x = max.y = 0;
@@ -1058,7 +1067,7 @@ void console_create_window(running_machine *machine)
 }
 
 
-- (void)selectSubviewForCPU:(running_device *)device {
+- (void)selectSubviewForCPU:(device_t *)device {
 	const debug_view_source     *selected = view->source();
 	const debug_view_source     *source = view->source_list().match_device(device);
 	if ( selected != source ) {
@@ -1081,8 +1090,8 @@ void console_create_window(running_machine *machine)
 
 - (IBAction)debugToggleBreakpoint:(id)sender {
 	if (view->cursor_visible()) {
-		const address_space *space = downcast<const debug_view_disasm_source *>(view->source())->space();
-		if (!useConsole || (debug_cpu_get_visible_cpu(machine) == space->cpu)) {
+		address_space *space = downcast<const debug_view_disasm_source *>(view->source())->space();
+		if (!useConsole || (debug_cpu_get_visible_cpu(*machine) == &space->device())) {
 			offs_t				address = downcast<debug_view_disasm *>(view)->selected_address();
 			device_debug::breakpoint *bp = [self findBreakpointAtAddress:address inAddressSpace:space];
 
@@ -1093,12 +1102,12 @@ void console_create_window(running_machine *machine)
 					command = [NSString stringWithFormat:@"bpset %lX", (unsigned long)address];
 				else
 					command = [NSString stringWithFormat:@"bpclear %X", (unsigned)bp->index()];
-				debug_console_execute_command(machine, [command UTF8String], 1);
+				debug_console_execute_command(*machine, [command UTF8String], 1);
 			} else {
 				if (bp == NULL)
-					space->cpu->debug()->breakpoint_set(address, NULL, NULL);
+					space->device().debug()->breakpoint_set(address, NULL, NULL);
 				else
-					space->cpu->debug()->breakpoint_clear(bp->index());
+					space->device().debug()->breakpoint_clear(bp->index());
 			}
 		}
 	}
@@ -1107,8 +1116,8 @@ void console_create_window(running_machine *machine)
 
 - (IBAction)debugToggleBreakpointEnable:(id)sender {
 	if (view->cursor_visible()) {
-		const address_space *space = downcast<const debug_view_disasm_source *>(view->source())->space();
-		if (!useConsole || (debug_cpu_get_visible_cpu(machine) == space->cpu)) {
+		address_space *space = downcast<const debug_view_disasm_source *>(view->source())->space();
+		if (!useConsole || (debug_cpu_get_visible_cpu(*machine) == &space->device())) {
 			offs_t				address = downcast<debug_view_disasm *>(view)->selected_address();
 			device_debug::breakpoint *bp = [self findBreakpointAtAddress:address inAddressSpace:space];
 
@@ -1119,9 +1128,9 @@ void console_create_window(running_machine *machine)
 						command = [NSString stringWithFormat:@"bpdisable %X", (unsigned)bp->index()];
 					else
 						command = [NSString stringWithFormat:@"bpenable %X", (unsigned)bp->index()];
-					debug_console_execute_command(machine, [command UTF8String], 1);
+					debug_console_execute_command(*machine, [command UTF8String], 1);
 				} else {
-					space->cpu->debug()->breakpoint_enable(bp->index(), !bp->enabled());
+					space->device().debug()->breakpoint_enable(bp->index(), !bp->enabled());
 				}
 			}
 		}
@@ -1131,14 +1140,14 @@ void console_create_window(running_machine *machine)
 
 - (IBAction)debugRunToCursor:(id)sender {
 	if (view->cursor_visible()) {
-		const address_space *space = downcast<const debug_view_disasm_source *>(view->source())->space();
-		if (debug_cpu_get_visible_cpu(machine) == space->cpu) {
+		address_space *space = downcast<const debug_view_disasm_source *>(view->source())->space();
+		if (debug_cpu_get_visible_cpu(*machine) == &space->device()) {
 			offs_t address = downcast<debug_view_disasm *>(view)->selected_address();
 			if (useConsole) {
-				NSString *command = [NSString stringWithFormat:@"go %lX", (unsigned long)address];
-				debug_console_execute_command(machine, [command UTF8String], 1);
+				NSString *command = [NSString stringWithFormat:@"go 0x%lX", (unsigned long)address];
+				debug_console_execute_command(*machine, [command UTF8String], 1);
 			} else {
-				debug_cpu_get_visible_cpu(machine)->debug()->go(address);
+				debug_cpu_get_visible_cpu(*machine)->debug()->go(address);
 			}
 		}
 	}
@@ -1235,7 +1244,7 @@ void console_create_window(running_machine *machine)
 
 @implementation MAMERegistersView
 
-- (id)initWithFrame:(NSRect)f machine:(running_machine *)m {
+- (id)initWithFrame:(NSRect)f machine:(running_machine &)m {
 	if (!(self = [super initWithFrame:f type:DVT_STATE machine:m]))
 		return nil;
 	return self;
@@ -1249,7 +1258,7 @@ void console_create_window(running_machine *machine)
 
 - (NSSize)maximumFrameSize {
 	debug_view_xy				max;
-	running_device				*curcpu = debug_cpu_get_visible_cpu(machine);
+	device_t				*curcpu = debug_cpu_get_visible_cpu(*machine);
 	const debug_view_source		*source = view->source_list().match_device(curcpu);
 
 
@@ -1283,7 +1292,7 @@ void console_create_window(running_machine *machine)
 }
 
 
-- (void)selectSubviewForCPU:(running_device *)device {
+- (void)selectSubviewForCPU:(device_t *)device {
 	//dv = get_view(dmain, DVT_STATE);
 	view->set_source(*view->source_list().match_device(device));
 }
@@ -1297,7 +1306,7 @@ void console_create_window(running_machine *machine)
 
 @implementation MAMEConsoleView
 
-- (id)initWithFrame:(NSRect)f machine:(running_machine *)m {
+- (id)initWithFrame:(NSRect)f machine:(running_machine &)m {
 	if (!(self = [super initWithFrame:f type:DVT_CONSOLE machine:m]))
 		return nil;
 	return self;
@@ -1317,7 +1326,7 @@ void console_create_window(running_machine *machine)
 
 @implementation MAMEErrorLogView
 
-- (id)initWithFrame:(NSRect)f machine:(running_machine *)m {
+- (id)initWithFrame:(NSRect)f machine:(running_machine &)m {
 	if (!(self = [super initWithFrame:f type:DVT_LOG machine:m]))
 		return nil;
 	return self;
@@ -1429,7 +1438,7 @@ void console_create_window(running_machine *machine)
 }
 
 
-- (id)initWithMachine:(running_machine *)m title:(NSString *)t {
+- (id)initWithMachine:(running_machine &)m title:(NSString *)t {
 	if (!(self = [super init]))
 		return nil;
 
@@ -1454,7 +1463,7 @@ void console_create_window(running_machine *machine)
 												 name:MAMEHideDebuggerNotification
 											   object:nil];
 
-	machine = m;
+	machine = &m;
 
 	return self;
 }
@@ -1476,49 +1485,49 @@ void console_create_window(running_machine *machine)
 
 
 - (IBAction)debugRun:(id)sender {
-	debug_cpu_get_visible_cpu(machine)->debug()->go();
+	debug_cpu_get_visible_cpu(*machine)->debug()->go();
 }
 
 
 - (IBAction)debugRunAndHide:(id)sender {
 	[[NSNotificationCenter defaultCenter] postNotificationName:MAMEHideDebuggerNotification object:self];
-	debug_cpu_get_visible_cpu(machine)->debug()->go();
+	debug_cpu_get_visible_cpu(*machine)->debug()->go();
 }
 
 
 - (IBAction)debugRunToNextCPU:(id)sender {
-	debug_cpu_get_visible_cpu(machine)->debug()->go_next_device();
+	debug_cpu_get_visible_cpu(*machine)->debug()->go_next_device();
 }
 
 
 - (IBAction)debugRunToNextInterrupt:(id)sender {
-	debug_cpu_get_visible_cpu(machine)->debug()->go_interrupt();
+	debug_cpu_get_visible_cpu(*machine)->debug()->go_interrupt();
 }
 
 
 - (IBAction)debugRunToNextVBLANK:(id)sender {
-	debug_cpu_get_visible_cpu(machine)->debug()->go_vblank();
+	debug_cpu_get_visible_cpu(*machine)->debug()->go_vblank();
 }
 
 
 - (IBAction)debugStepInto:(id)sender {
-	debug_cpu_get_visible_cpu(machine)->debug()->single_step();
+	debug_cpu_get_visible_cpu(*machine)->debug()->single_step();
 }
 
 
 - (IBAction)debugStepOver:(id)sender {
-	debug_cpu_get_visible_cpu(machine)->debug()->single_step_over();
+	debug_cpu_get_visible_cpu(*machine)->debug()->single_step_over();
 }
 
 
 - (IBAction)debugStepOut:(id)sender {
-	debug_cpu_get_visible_cpu(machine)->debug()->single_step_out();
+	debug_cpu_get_visible_cpu(*machine)->debug()->single_step_out();
 }
 
 
 - (IBAction)debugSoftReset:(id)sender {
 	machine->schedule_soft_reset();
-	debug_cpu_get_visible_cpu(machine)->debug()->go();
+	debug_cpu_get_visible_cpu(*machine)->debug()->go();
 }
 
 
@@ -1533,8 +1542,8 @@ void console_create_window(running_machine *machine)
 
 
 - (void)showDebugger:(NSNotification *)notification {
-	running_device *device = (running_device *) [[[notification userInfo] objectForKey:@"MAMEDebugDevice"] pointerValue];
-	if (device->machine == machine) {
+	device_t *device = (device_t *) [[[notification userInfo] objectForKey:@"MAMEDebugDevice"] pointerValue];
+	if (&device->machine() == machine) {
 		if (![window isVisible] && ![window isMiniaturized])
 			[window orderFront:self];
 	}
@@ -1555,7 +1564,7 @@ void console_create_window(running_machine *machine)
 
 @implementation MAMEDebugConsole
 
-- (id)initWithMachine:(running_machine *)m {
+- (id)initWithMachine:(running_machine &)m {
 	NSSplitView		*regSplit, *dasmSplit;
 	NSScrollView	*regScroll, *dasmScroll, *consoleScroll;
 	NSView			*consoleContainer;
@@ -1569,7 +1578,7 @@ void console_create_window(running_machine *machine)
 	auxiliaryWindows = [[NSMutableArray alloc] init];
 
 	// create the register view
-	regView = [[MAMERegistersView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) machine:machine];
+	regView = [[MAMERegistersView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) machine:*machine];
 	regScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)];
 	[regScroll setDrawsBackground:YES];
 	[regScroll setHasHorizontalScroller:YES];
@@ -1581,7 +1590,7 @@ void console_create_window(running_machine *machine)
 
 	// create the disassembly view
 	dasmView = [[MAMEDisassemblyView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)
-												  machine:machine
+												  machine:*machine
 											   useConsole:YES];
 	[dasmView setExpression:@"curpc"];
 	dasmScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)];
@@ -1594,7 +1603,7 @@ void console_create_window(running_machine *machine)
 	[dasmView release];
 
 	// create the console view
-	consoleView = [[MAMEConsoleView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) machine:machine];
+	consoleView = [[MAMEConsoleView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) machine:*machine];
 	consoleScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)];
 	[consoleScroll setDrawsBackground:YES];
 	[consoleScroll setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
@@ -1733,11 +1742,11 @@ void console_create_window(running_machine *machine)
 }
 
 
-- (void)setCPU:(running_device *)device {
+- (void)setCPU:(device_t *)device {
 	[regView selectSubviewForCPU:device];
 	[dasmView selectSubviewForCPU:device];
 	[window setTitle:[NSString stringWithFormat:@"Debug: %s - %s '%s'",
-												device->machine->gamedrv->name,
+												device->machine().system().name,
 												device->name(),
 												device->tag()]];
 }
@@ -1746,9 +1755,9 @@ void console_create_window(running_machine *machine)
 - (IBAction)doCommand:(id)sender {
 	NSString *command = [sender stringValue];
 	if ([command length] == 0) {
-		debug_cpu_get_visible_cpu(machine)->debug()->single_step();
+		debug_cpu_get_visible_cpu(*machine)->debug()->single_step();
 	} else {
-		debug_console_execute_command(machine, [command UTF8String], 1);
+		debug_console_execute_command(*machine, [command UTF8String], 1);
 		[history add:command];
 	}
 	[sender setStringValue:@""];
@@ -1756,7 +1765,7 @@ void console_create_window(running_machine *machine)
 
 
 - (IBAction)debugNewMemoryWindow:(id)sender {
-	MAMEMemoryViewer *win = [[MAMEMemoryViewer alloc] initWithMachine:machine console:self];
+	MAMEMemoryViewer *win = [[MAMEMemoryViewer alloc] initWithMachine:*machine console:self];
 	[auxiliaryWindows addObject:win];
 	[win release];
 	[win activate];
@@ -1764,7 +1773,7 @@ void console_create_window(running_machine *machine)
 
 
 - (IBAction)debugNewDisassemblyWindow:(id)sender {
-	MAMEDisassemblyViewer *win = [[MAMEDisassemblyViewer alloc] initWithMachine:machine console:self];
+	MAMEDisassemblyViewer *win = [[MAMEDisassemblyViewer alloc] initWithMachine:*machine console:self];
 	[auxiliaryWindows addObject:win];
 	[win release];
 	[win activate];
@@ -1772,7 +1781,7 @@ void console_create_window(running_machine *machine)
 
 
 - (IBAction)debugNewErrorLogWindow:(id)sender {
-	MAMEDisassemblyViewer *win = [[MAMEErrorLogViewer alloc] initWithMachine:machine console:self];
+	MAMEDisassemblyViewer *win = [[MAMEErrorLogViewer alloc] initWithMachine:*machine console:self];
 	[auxiliaryWindows addObject:win];
 	[win release];
 	[win activate];
@@ -1780,8 +1789,8 @@ void console_create_window(running_machine *machine)
 
 
 - (void)showDebugger:(NSNotification *)notification {
-	running_device *device = (running_device * )[[[notification userInfo] objectForKey:@"MAMEDebugDevice"] pointerValue];
-	if (device->machine == machine) {
+	device_t *device = (device_t * )[[[notification userInfo] objectForKey:@"MAMEDebugDevice"] pointerValue];
+	if (&device->machine() == machine) {
 		[self setCPU:device];
 		[window makeKeyAndOrderFront:self];
 	}
@@ -1825,7 +1834,7 @@ void console_create_window(running_machine *machine)
 	if ([notification object] != window)
 		return;
 	[[NSNotificationCenter defaultCenter] postNotificationName:MAMEHideDebuggerNotification object:self];
-	debug_cpu_get_visible_cpu(machine)->debug()->go();
+	debug_cpu_get_visible_cpu(*machine)->debug()->go();
 }
 
 
@@ -1901,7 +1910,7 @@ void console_create_window(running_machine *machine)
 }
 
 
-- (id)initWithMachine:(running_machine *)m title:(NSString *)t console:(MAMEDebugConsole *)c {
+- (id)initWithMachine:(running_machine &)m title:(NSString *)t console:(MAMEDebugConsole *)c {
 	if (!(self = [super initWithMachine:m title:t]))
 		return nil;
 	console = c;
@@ -1966,7 +1975,7 @@ void console_create_window(running_machine *machine)
 
 @implementation MAMEExpressionAuxiliaryDebugWindowHandler
 
-- (id)initWithMachine:(running_machine *)m title:(NSString *)t console:(MAMEDebugConsole *)c {
+- (id)initWithMachine:(running_machine &)m title:(NSString *)t console:(MAMEDebugConsole *)c {
 	if (!(self = [super initWithMachine:m title:t console:c]))
 		return nil;
 	history = [[MAMEDebugCommandHistory alloc] init];
@@ -2034,7 +2043,7 @@ void console_create_window(running_machine *machine)
 
 @implementation MAMEMemoryViewer
 
-- (id)initWithMachine:(running_machine *)m console:(MAMEDebugConsole *)c {
+- (id)initWithMachine:(running_machine &)m console:(MAMEDebugConsole *)c {
 	NSScrollView	*memoryScroll;
 	NSView			*expressionContainer;
 	NSPopUpButton	*actionButton, *subviewButton;
@@ -2084,7 +2093,7 @@ void console_create_window(running_machine *machine)
 
 	// create the memory view
 	memoryView = [[MAMEMemoryView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)
-											   machine:machine];
+											   machine:*machine];
 	[memoryView insertSubviewItemsInMenu:[subviewButton menu] atIndex:0];
 	memoryScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0,
 																  0,
@@ -2112,7 +2121,7 @@ void console_create_window(running_machine *machine)
 	[actionButton release];
 
 	// set default state
-	[memoryView selectSubviewForCPU:debug_cpu_get_visible_cpu(machine)];
+	[memoryView selectSubviewForCPU:debug_cpu_get_visible_cpu(*machine)];
 	[memoryView setExpression:@"0"];
 	[expressionField setStringValue:@"0"];
 	[expressionField selectText:self];
@@ -2158,7 +2167,7 @@ void console_create_window(running_machine *machine)
 
 @implementation MAMEDisassemblyViewer
 
-- (id)initWithMachine:(running_machine *)m console:(MAMEDebugConsole *)c {
+- (id)initWithMachine:(running_machine &)m console:(MAMEDebugConsole *)c {
 	NSScrollView	*dasmScroll;
 	NSView			*expressionContainer;
 	NSPopUpButton	*actionButton, *subviewButton;
@@ -2208,7 +2217,7 @@ void console_create_window(running_machine *machine)
 
 	// create the disassembly view
 	dasmView = [[MAMEDisassemblyView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)
-												  machine:machine
+												  machine:*machine
 											   useConsole:NO];
 	[dasmView insertSubviewItemsInMenu:[subviewButton menu] atIndex:0];
 	dasmScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0,
@@ -2237,7 +2246,7 @@ void console_create_window(running_machine *machine)
 	[actionButton release];
 
 	// set default state
-	[dasmView selectSubviewForCPU:debug_cpu_get_visible_cpu(machine)];
+	[dasmView selectSubviewForCPU:debug_cpu_get_visible_cpu(*machine)];
 	[dasmView setExpression:@"curpc"];
 	[expressionField setStringValue:@"curpc"];
 	[expressionField selectText:self];
@@ -2283,18 +2292,18 @@ void console_create_window(running_machine *machine)
 
 @implementation MAMEErrorLogViewer
 
-- (id)initWithMachine:(running_machine *)m console:(MAMEDebugConsole *)c {
+- (id)initWithMachine:(running_machine &)m console:(MAMEDebugConsole *)c {
 	NSScrollView	*logScroll;
 	NSString		*title;
 
 	title = [NSString stringWithFormat:@"Error Log: %@ [%@]",
-									   [NSString stringWithUTF8String:m->gamedrv->description],
-									   [NSString stringWithUTF8String:m->gamedrv->name]];
+									   [NSString stringWithUTF8String:m.system().description],
+									   [NSString stringWithUTF8String:m.system().name]];
 	if (!(self = [super initWithMachine:m title:title console:c]))
 		return nil;
 
 	// create the error log view
-	logView = [[MAMEErrorLogView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) machine:machine];
+	logView = [[MAMEErrorLogView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) machine:*machine];
 	logScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)];
 	[logScroll setDrawsBackground:YES];
 	[logScroll setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
